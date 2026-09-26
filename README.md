@@ -35,6 +35,10 @@ bash ./templates/hooks/guard-rails-test.sh
 
 装完后,目标项目 `.claude/hooks/` 会出现 10 个文件(5 hook + 3 helper + 1 test + 1 README),并自动接管"危险操作必须人工拍板"的门禁职责。
 
+### 💡 配好后怎么让 agent 真正提质量?
+
+光装好 hook 不够,要看 **[Agent Quality Guide](docs/quality/README.md)** — 5 个 Part 讲解 ROI、5 原语理论、4 个真实场景、资产速查、调优 FAQ。
+
 ---
 
 ## 二、项目目标
