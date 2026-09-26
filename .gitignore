@@ -37,3 +37,8 @@ secrets/
 *.tmp
 *.bak
 *.log
+
+# 会话接力文件(不入产品仓库,只在本地跨会话使用)
+# 参见 README.md §七 和各 handoff-*.md 的"接力时刻"
+handoff-*.md
+prompt-*-next.md
