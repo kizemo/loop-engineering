@@ -16,7 +16,7 @@ loop-engineering 项目的**质量提升手册**。讲**装好 loop-engineering 
 |---|---|---|
 | **决策者**(是否引入 loop-engineering) | 10 min | README → [Part 1](PART-1-DECISION-FRAMEWORK.md) |
 | **使用者**(刚装好想用起来) | 60 min | README → [Part 2.1](PART-2-1-PRIMITIVES.md) → [Part 2.2](PART-2-2-SCENARIOS.md) |
-| **老用户**(已用半年,想调优/解 bug) | 按需 | [Part 2.3](PART-2-3-ASSETS.md) + [Part 3](PART-3-TUNING-FAQ.md) |
+| **深度使用者**(已用半年,想调优/解 bug) | 按需 | [Part 2.3](PART-2-3-ASSETS.md) + [Part 3](PART-3-TUNING-FAQ.md) |
 
 ## 3. 阅读路径
 
@@ -26,15 +26,13 @@ graph LR
   A --> C[Part 2.1 · 5 原语]
   C --> D[Part 2.2 · 4 场景实操]
   A --> D
-  D --> E[Part 2.3 · 资产速查]
-  D --> F[Part 3 · 调优 FAQ]
 ```
 
 3 条核心路径(来自 spec §4):
 
 1. **决策者 10 min**:`README → Part 1`(ROI + 适用场景 + 风险,看完拍板)
 2. **使用者 60 min 入门**:`README → Part 2.1 → Part 2.2`(理论 → 4 场景实操)
-3. **老用户深度使用**:`Part 2.3` + `Part 3`(按需跳读,查 hook 配置 / 翻 FAQ)
+3. **深度使用者深度使用**:`Part 2.3` + `Part 3`(按需跳读,查 hook 配置 / 翻 FAQ)
 
 ## 4. 版本与更新
 
@@ -50,4 +48,4 @@ graph LR
 - [Part 2.2 · 4 场景实操](PART-2-2-SCENARIOS.md) ← **主菜** — 日常开发 / PR review / 跨天调研 / 应急响应
 - [Part 2.3 · 资产速查](PART-2-3-ASSETS.md) — 5 hook + 3 skill + 1 cmd + 3 Playbook
 - [Part 3 · 调优 FAQ](PART-3-TUNING-FAQ.md) — 误拦截 / 调 hook / 升级指南
-- 跨链:[根 README](../../README.md) · [Playbooks](../../playbooks/README.md) · [Examples](../../examples/README.md)
+- 跨链:[根 README](../../README.md) · [Playbooks](../../playbooks/README.md)
