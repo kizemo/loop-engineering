@@ -11,11 +11,24 @@
 
 > **方法**:用 4 个真实部署项目(`rime-claude` / `cut-ad` / `sandbox-verify` / `media-to-doc-ui`)在 2026-09-25 单日的 hook 拦截数据,反推"如果 hook 不存在会发生什么"。每个数字后面标注来源,可追溯。
 
+> **⚠️ 重要前置说明**(必读):
+>
+> 2026-09-25 单日合成拦截日志(`.loopx/guard-events-2026-09-25.jsonl`)包含**所有 5 个 hook 类型的拦截事件**(142 行),但每个项目实际只挂其中一部分 hook。因此下表每行的"高频拦截"是**合成数据反推结果**,不是"该 hook 在该项目真实运行过"的证据。
+>
+> **未装 hook 比例**(每项目):
+>
+> - **rime-claude**:53 事件中 24 事件(45%) 来自**未装**的 hook(`guard-db-migration` 20 次 + `guard-secret-files` 4 次 — 这两个 hook 在 rime-claude 没部署,JSONL 中是测试触发的 happy/block path)
+> - **cut-ad**:46 事件中 34 事件(74%) 来自未装 hook(`guard-db-migration` 15 + `guard-package-publish` 15 + `guard-secret-files` 4)
+> - **sandbox-verify**:43 事件中 15 事件(35%) 来自未装 hook(`guard-package-publish` 15)
+>
+> **判断保留**:真实 ROI 应**只看"已挂 hook"对应的拦截事件**,见 §1.1.5 汇总表"已挂 hook 拦截(去水)"列。这是"数字看起来很多但 ROI 被高估"的关键校正。
+
 ### 1.1.1 rime-claude(全套 hook 部署)
 
 - **JSONL 行数**:53 行 BLOCK 事件 [来源:`examples/rime-claude.md` §evidence 产出]
-- **hook 数**:4 个(`guard-main-branch-push.py` / `guard-package-publish.sh` / `guard-installer-path.sh` × 2) [来源:`examples/rime-claude.md` §已挂 hook]
-- **高频拦截**:`guard-db-migration` 20 次 + `guard-package-publish` 20 次 + `guard-installer-path` 6 次 + `guard-secret-files` 4 次 + `guard-main-branch-push` 3 次 [来源:`_data-extract-notes.md` §1]
+- **hook 数**:**3 个唯一 hook**(settings.json 4 个 matcher 挂载位置 — `guard-main-branch-push.py` × 1 + `guard-package-publish.sh` × 1 + `guard-installer-path.sh` × 2 即 Edit|Write|MultiEdit + Bash matcher 各挂一次) [来源:`examples/rime-claude.md` §已挂 hook]
+- **未装 hook**:`guard-secret-files.js`(rime 无密钥)/ `guard-db-migration.sh`(rime 不跑 DB)
+- **真实已挂 hook 拦截(去水)**:`guard-package-publish` 20 + `guard-installer-path` 6 + `guard-main-branch-push` 3 = **29 事件/天**(`guard-db-migration` 20 + `guard-secret-files` 4 是合成测试触发,**非真实部署拦截**)[来源:`_data-extract-notes.md` §1]
 - **节省估算**(⚠️ 估算):每天 ~3 次误推 main × 30 min/次 ≈ 节省 **1.5 小时/天**(假设每次误推需要回滚 + 通知 + 重发 PR)
 - **价值点**:rime-claude 是发布分支型项目,误推 main = 影响所有装机用户,**单次事故代价远高于其他 hook**
 
@@ -23,7 +36,8 @@
 
 - **JSONL 行数**:46 行 [来源:`examples/cut-ad.md` §evidence 产出]
 - **hook 数**:2 个(`guard-main-branch-push.py` + `guard-installer-path.sh`)[来源:`examples/cut-ad.md` §已挂 hook(精简版)]
-- **高频拦截**:`guard-db-migration` 15 次 + `guard-package-publish` 15 次 + `guard-installer-path` 9 次(全项目最高频)+ `guard-secret-files` 4 次 + `guard-main-branch-push` 3 次 [来源:`_data-extract-notes.md` §1]
+- **未装 hook**:`guard-secret-files.js`(cut-ad 无密钥)/ `guard-db-migration.sh`(cut-ad 不跑 DB)/ `guard-package-publish.sh`(cut-ad 不发包)
+- **真实已挂 hook 拦截(去水)**:`guard-installer-path` 9 + `guard-main-branch-push` 3 = **12 事件/天**(`guard-db-migration` 15 + `guard-package-publish` 15 + `guard-secret-files` 4 是合成测试触发) [来源:`_data-extract-notes.md` §1]
 - **节省估算**(⚠️ 估算):cut-ad 处理 ffmpeg 输出,误写路径 = 重新转换视频 ≈ 15 min/次 × 9 次 = **2.25 小时/天**
 - **价值点**:**精简 hook 也能覆盖 80% 高危操作**,精简版 = false positive 最低
 
@@ -31,9 +45,10 @@
 
 - **JSONL 行数**:43 行 [来源:`examples/sandbox-verify.md` §evidence 产出]
 - **hook 数**:4 个(含独有 `guard-secret-files.js` + `guard-db-migration.sh`)[来源:`examples/sandbox-verify.md` §已挂 hook(独有配置)]
-- **高频拦截**:`guard-db-migration` 15 次 + `guard-package-publish` 15 次 + `guard-installer-path` 6 次 + `guard-secret-files` 4 次 + `guard-main-branch-push` 3 次 [来源:`_data-extract-notes.md` §1]
+- **未装 hook**:`guard-package-publish.sh`(sandbox-verify 跑 dbt 不发 npm)
+- **真实已挂 hook 拦截(去水)**:`guard-db-migration` 15 + `guard-installer-path` 6 + `guard-secret-files` 4 + `guard-main-branch-push` 3 = **28 事件/天**(`guard-package-publish` 15 是合成测试触发) [来源:`_data-extract-notes.md` §1]
 - **节省估算**(⚠️ 估算):secret-files 拦截 4 次/天 × 2 小时/次(rotate keys + 审计 git history)= **8 小时/天**;db-migration 误触发 15 次/天 × 10 min/次 = **2.5 小时/天**
-- **价值点**:**凭证 + dbt migration 是 sandbox-verify 的高危面**,secret-files 0 误报率(只拦真正密钥)[来源:spec §220]
+- **价值点**:**凭证 + dbt migration 是 sandbox-verify 的高危面**,secret-files 0 误报率(只拦真正密钥)[来源:`_data-extract-notes.md` §1 关键观察 #4]
 
 ### 1.1.4 media-to-doc-ui(⚠️ 估算,JSONL 不可访问)
 
@@ -47,13 +62,13 @@
 
 > ⚠️ **数据说明**:数字来自单日合成拦截日志,非全年生产统计;rime-claude/cut-ad/sandbox-verify 真实可访问,media-to-doc-ui 仅估算。
 
-| 项目 | 拦截次数/天 | 已挂 hook 数 | 节省 review 时间/天(⚠️ 估算) | 部署复杂度 |
-|---|---:|---:|---|---|
-| **rime-claude** | 53 | 4 | ~1.5 h(main-branch 拦截价值高) | 5 min(`install.sh` + settings.json) |
-| **cut-ad** | 46 | 2 | ~2.25 h(installer-path 全项目最高频) | 3 min(精简版,只 2 hook) |
-| **sandbox-verify** | 43 | 4 | ~10.5 h(secret-files 节省 8 h + db-migration 节省 2.5 h) | 5 min(独有 secret + db) |
-| **media-to-doc-ui** | ⚠️ 估算 ~50 | 4 | ⚠️ 估算 ~待回填 | 5 min(同 rime-claude 结构) |
-| **小计** | ~192 | — | ~14 h/天 ⚠️ 估算 | — |
+| 项目 | JSONL 总拦截/天 | 真实拦截/天(去水,只看已装 hook) | 已挂 hook 数 | 节省 review 时间/天(⚠️ 估算) | 部署复杂度 |
+|---|---:|---:|---:|---|---|
+| **rime-claude** | 53 | **29** | 3(4 matcher) | ~1.5 h(main-branch 拦截价值高) | 5 min(`install.sh` + settings.json) |
+| **cut-ad** | 46 | **12** | 2 | ~2.25 h(installer-path 全项目最高频) | 3 min(精简版,只 2 hook) |
+| **sandbox-verify** | 43 | **28** | 4 | ~10.5 h(secret-files 节省 8 h + db-migration 节省 2.5 h) | 5 min(独有 secret + db) |
+| **media-to-doc-ui** | ⚠️ 估算 ~50 | ⚠️ 估算 ~待回填 | 4 | ⚠️ 估算 ~待回填 | 5 min(同 rime-claude 结构) |
+| **小计**(去水后) | ~192 | **~69 事件/天** | — | ~14 h/天 ⚠️ 估算 | — |
 
 **单次拦截节省 review 时间粗估**:5-15 分钟/次(基于"误推 main ≈ 30 min/次 + 误写路径 ≈ 15 min/次 + 密钥泄漏 ≈ 2 h/次"加权平均;⚠️ 估算,未做控制实验)。
 
@@ -195,7 +210,7 @@ git clone https://github.com/kizemo/loop-engineering.git
   - **单 hook 误拦截**:注释 `settings.json` 里对应 matcher 行(临时禁用)
   - **全局误拦截**:跑 `./loop-engineering/install.sh --uninstall --target /path/to/your-project`
 - **回滚时间**:单 hook = 1 分钟,全局 = 30 秒
-- **实际误报率**:`guard-secret-files.js` **0 误报**(只拦真密钥,如 `ghp_*` / `AKIA*` / `sk-*`)[来源:spec §220]
+- **实际误报率**:`guard-secret-files.js` **0 误报**(只拦真密钥,如 `ghp_*` / `AKIA*` / `sk-*`)[来源:`_data-extract-notes.md` §1 关键观察 #4]
 
 ### 1.4.2 性能开销
 
@@ -229,7 +244,7 @@ git clone https://github.com/kizemo/loop-engineering.git
 
 | Hook | 实测误报率 | 来源 |
 |---|---:|---|
-| `guard-secret-files.js` | **0%**(只拦真密钥正则) | [来源:spec §220] |
+| `guard-secret-files.js` | **0%**(只拦真密钥正则) | [来源:`_data-extract-notes.md` §1 关键观察 #4] |
 | `guard-main-branch-push.py` | < 5%(字符串匹配 `git push.*main`) | [来源:`examples/rime-claude.md` §关键决策点 #3] |
 | `guard-installer-path.sh` | < 10%(路径白名单需配准) | [来源:`_data-extract-notes.md` §1] |
 | `guard-package-publish.sh` | < 8%(cargo + npm 双模式) | [来源:`examples/media-to-doc-ui.md` §关键决策点 #2] |
