@@ -92,7 +92,7 @@ graph LR
 
 [来源:`_data-extract-notes.md` §2.1 第 4 条,JSONL 第 53 行附近]
 
-**如果 hook 不存在**:rim-claude 是发布分支型项目,`git push origin main` 会直接推上 Github,下游所有装机用户在 5 分钟内收到带 bug 的版本。**回滚 + 通知 + 重发 PR 估算 ≈ 30 分钟/次** × 3 次/天 = **1.5 小时/天**。 [来源:`_data-extract-notes.md` §4.2 反推事故 #7 + Part 1 §1.1.1]
+**如果 hook 不存在**:rime-claude 是发布分支型项目,`git push origin main` 会直接推上 Github,下游所有装机用户在 5 分钟内收到带 bug 的版本。**回滚 + 通知 + 重发 PR 估算 ≈ 30 分钟/次** × 3 次/天 = **1.5 小时/天**。 [来源:`_data-extract-notes.md` §4.2 反推事故 #7 + Part 1 §1.1.1]
 
 **案例 1.2 · installer 写错路径被拦**(rime-claude 6 次/天):
 
