@@ -4,7 +4,7 @@
 - BASE: 5982774 (docs(spec): revise OpenClaw compat spec to v2 — IPC + Windows + core rewrite)
 - Branch: main
 - Workspace: .superpowers/sdd/2026-09-27-openclaw-compat-plan/
-- Plan path: docs/superpowers/plans/2026-09-27-openclaw-compat-plan.md (待 writing-plans)
+- Plan path: docs/superpowers/plans/2026-09-27-openclaw-compat-plan.md (v1, 1177 lines, approved at commit 06d794f)
 - Spec: docs/superpowers/specs/2026-09-27-openclaw-compat-design.md (v2 DRAFT, ~1100 lines, approved at commit 5982774)
 - Execution mode: Subagent-Driven(per spec §9 + Sub-project D 经验)
 - Estimated total work: ~20-27h(9 task, code 1500-2000 + tests 600-800 + docs 400)
@@ -14,7 +14,7 @@
 - [x] No review-rubric-vs-plan conflicts found
 - [x] No file path conflicts with existing templates/hooks/(verified by `ls`)
 - [x] User 4 decisions applied(spec v2,commit 5982774):core rewrite / Windows / IPC / single-source SKILL
-- [ ] writing-plans 产出 plan.md(本次会话外)
+- [x] writing-plans 产出 plan.md(本次会话内,commit 06d794f)
 - [ ] 用户审 plan 通过
 
 ## User decisions(2026-09-27,记录于 spec §0)
@@ -44,10 +44,16 @@
 - 🟡 PowerShell 5.1 vs 7+ 差异 — spec 强制 PowerShell 7+(pwsh)
 
 ## Next step
-writing-plans 产出 `docs/superpowers/plans/2026-09-27-openclaw-compat-plan.md`,含:
-- 9 task 拆解(每个 task:数据依赖 / 改动文件 / 验收 / 风险)
-- 任务依赖图(1 → 2,1 → 3,2+3 → 4,3 → 5,2+4+5 → 6,6 → 7,2+5 → 8,8 → 9)
-- 实施时间线(估时 vs 实际)
-- 中间检查点(每完成 1-2 task,跑相关测试)
+- [x] Plan 写完,commit 06d794f
+- [ ] 用户审 plan 通过
+- [ ] 开始 Task 1(Core logic 提取)— 🔴 Gate 任务
 
-待 plan 通过 → 用户审 → 逐 task 实施 → Final review → push → 写 handoff。
+## 提交链(实时更新)
+
+| Commit | Task | 说明 |
+|---|---|---|
+| `449f99e` | (Setup) | docs(spec): v1 |
+| `5982774` | (Setup) | docs(spec): v2 (用户 4 决策) |
+| `4b8fbe6` | (Setup) | fix(sdd): scaffold ledger |
+| `06d794f` | (Setup) | docs(plan): 9-task plan |
+| (待定) | Task 1 | feat(openclaw): core logic + types + 单测 |
