@@ -10,9 +10,16 @@
 - Estimated total work: 8-12h (8 task, code 1100 + docs 250 + fixtures 200 + tests 200)
 
 ## Pre-flight scan
-- [ ] No task contradictions with Global Constraints
-- [ ] No review-rubric-vs-plan conflicts found
-- [ ] No file path conflicts with existing templates/hooks/ (verified by `ls`)
+- [x] No task contradictions with Global Constraints
+- [x] No review-rubric-vs-plan conflicts found
+- [x] No file path conflicts with existing templates/hooks/ (verified by `ls`)
 
 ## Tasks
-- (each task marked complete after subagent-driven impl + review)
+- Task 1: complete (commits 29b2f9e..bda4aae, fix round 0/5, review clean — 0 Critical / 1 Important addressed by reviewer rec Option B' / 3 Minor parked, 1 Important applied: .superpowers/sdd/.gitignore added !progress.md exception)
+- Task 2: pending (next)
+- Task 3: pending
+- Task 4: pending
+- Task 5: pending
+- Task 6: pending
+- Task 7: pending
+- Task 8: pending
