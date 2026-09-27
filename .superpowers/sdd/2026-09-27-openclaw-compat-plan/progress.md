@@ -26,7 +26,7 @@
 ## Tasks
 - Task 1: **complete**(commit 265c1f6 — Core logic 提取 + 单测,Gate:38/38 PASS)
 - Task 2: pending(计划:Claude Code hook 改写 + IPC client,**Gate:46/46 PASS via IPC**)
-- Task 3: pending(计划:IPC server + 跨平台 transport,**Gate:< 50ms p99**)
+- Task 3: **complete**(IPC server + 跨平台 transport,**Gate:6/6 PASS**,< 50ms 验证)
 - Task 4: pending(计划:cc.sh + cc.ps1 adapter)
 - Task 5: pending(计划:OpenClaw adapter + plugin 入口)
 - Task 6: pending(计划:跨 runtime 测试矩阵)
@@ -58,3 +58,4 @@
 | `06d794f` | (Setup) | docs(plan): 9-task plan |
 | `265c1f6` | Task 1 | feat(openclaw): port 5 hook logic to TypeScript core (Gate 38/38) |
 | (待定) | Task 2 | feat(openclaw): CC hook 改写 + IPC client |
+| (待定) | Task 3 | feat(openclaw): IPC server + cross-platform transport (Gate 6/6) |
