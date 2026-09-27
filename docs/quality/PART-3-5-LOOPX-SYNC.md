@@ -1,6 +1,6 @@
 # Part 3.5 · LoopX 上游同步系统
 
-> **承接**:[Part 3 §3.1](PART-3-TUNING-FAQ.md)(LoopX 上游变更同步)+ §3.3(自动 weekly sync + 冲突检测)
+> **承接**:[Part 3 §3.1](PART-3-TUNING-FAQ.md#31-loopx-上游变更同步)(LoopX 上游变更同步)
 > **目标读者**:装上 loop-engineering 的 end-user,想知道"LoopX 升级后 hook 还正常吗,怎么知道/怎么办"
 > **安装**:`bash install.sh --with-loopx-sync`
 
@@ -142,7 +142,7 @@ bash templates/hooks/loopx-sync.sh --force
 
 ## 关联文档
 
-- [Part 3 §3.1](PART-3-TUNING-FAQ.md) — 上游变更同步(原 Part 3 内容)
-- [Part 2.1 §3](PART-2-1-PRIMITIVES.md) — LoopX 5 原语理论
-- [Part 2.3 §1](PART-2-3-ASSETS.md) — hook 速查表
-- [spec §5](../../superpowers/specs/2026-09-27-loopx-upstream-sync-design.md) — 详细设计
+- [Part 3 §3.1](PART-3-TUNING-FAQ.md#31-loopx-上游变更同步) — 上游变更同步(原 Part 3 内容)
+- [Part 2.1 · 5 原语统一结构](PART-2-1-PRIMITIVES.md#0-5-原语统一结构) — LoopX 5 原语理论
+- [Part 2.3 §1](PART-2-3-ASSETS.md#1--5-hook-速查表) — hook 速查表
+- [spec §5](../superpowers/specs/2026-09-27-loopx-upstream-sync-design.md#5-冲突检测3-个-detector) — 详细设计
