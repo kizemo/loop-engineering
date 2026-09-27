@@ -49,3 +49,7 @@ graph LR
 - [Part 2.3 · 资产速查](PART-2-3-ASSETS.md) — 5 hook + 3 skill + 1 cmd + 3 Playbook
 - [Part 3 · 调优 FAQ](PART-3-TUNING-FAQ.md) — 误拦截 / 调 hook / 升级指南
 - 跨链:[根 README](../../README.md) · [Playbooks](../../playbooks/README.md)
+
+## Part 3.5 · LoopX 上游同步(Sub-project D,2026-09-27+)
+
+装上 `bash install.sh --with-loopx-sync` 后,LoopX 上游变更每周自动检测 + 冲突 fail-closed + 一键回滚。详见 [Part 3.5](PART-3-5-LOOPX-SYNC.md)。

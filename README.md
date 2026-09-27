@@ -39,6 +39,8 @@ bash ./templates/hooks/guard-rails-test.sh
 
 光装好 hook 不够,要看 **[Agent Quality Guide](docs/quality/README.md)** — 5 个 Part 讲解 ROI、5 原语理论、4 个真实场景、资产速查、调优 FAQ。
 
+- [Part 3.5 · LoopX 上游同步](docs/quality/PART-3-5-LOOPX-SYNC.md) — Sub-project D · 每周自动检测 + 冲突 fail-closed + 一键回滚
+
 ---
 
 ## 二、项目目标
