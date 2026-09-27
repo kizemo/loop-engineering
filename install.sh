@@ -17,6 +17,7 @@ SCRIPT_DIR="$(cd -P "$(dirname "$0")" && pwd)"
 TARGET=""
 SKIP_SKILLS=0
 SKIP_COMMANDS=0
+WITH_LOOPX_SYNC=0
 
 usage() {
     cat <<EOF
@@ -33,6 +34,14 @@ Examples:
     $0 --target ~/projects/my-app --skip-skills
 EOF
 }
+
+# === Sub-project D: LoopX upstream sync (added 2026-09-27) ===
+# Usage: install.sh --with-loopx-sync
+# Default: NOT enabled (backward compat 100%)
+if [ "$1" = "--with-loopx-sync" ] || [ "$1" = "--upgrade-loopx-sync" ]; then
+  WITH_LOOPX_SYNC=1
+  shift
+fi
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -123,3 +132,19 @@ echo "     cd $TARGET"
 echo "     loopx doctor"
 echo ""
 echo "Docs: $SCRIPT_DIR/README.md"
+# === Sub-project D: LoopX upstream sync (added 2026-09-27) ===
+# Usage: install.sh --with-loopx-sync
+# Default: NOT enabled (backward compat 100%)
+if [ "$WITH_LOOPX_SYNC" = "1" ]; then
+  HOOK_DIR="templates/hooks"
+  # 注册 SessionStart hook(若 settings.json 已有 hook 数组则追加)
+  SETTINGS_FILE="$HOME/.claude/settings.json"
+  if [ -f "$SETTINGS_FILE" ]; then
+    # 用 jq 安全追加
+    TMP_SETTINGS=$(mktemp)
+    jq '.hooks.SessionStart = (.hooks.SessionStart // []) + [{"matcher": "", "hooks": [{"type": "command", "command": "bash templates/hooks/loopx-sync.sh"}]}]' "$SETTINGS_FILE" > "$TMP_SETTINGS" && mv "$TMP_SETTINGS" "$SETTINGS_FILE"
+    echo "✓ LoopX sync SessionStart hook 已注册到 $SETTINGS_FILE"
+  else
+    echo "WARN: $SETTINGS_FILE 不存在,请先跑 install.sh 基础安装" >&2
+  fi
+fi
