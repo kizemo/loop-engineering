@@ -4,6 +4,9 @@
 # Exit: 0 = ok (no conflict), 2 = conflict detected (locked)
 
 set -e
+# Fix Round 1: derive absolute script dir so internal bash calls work from any CWD
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 FORCE=""
 [ "$1" = "--force" ] && FORCE="1"
 
@@ -12,10 +15,10 @@ STATE_FILE="$STATE_DIR/sync-state.json"
 mkdir -p "$STATE_DIR"
 
 # Step 1: interval check
-SHOULD_RUN=$(bash templates/hooks/loopx-sync-check-interval.sh "$STATE_FILE" | grep '^should_run:' | awk '{print $2}')
+SHOULD_RUN=$(bash "$SCRIPT_DIR/loopx-sync-check-interval.sh" "$STATE_FILE" | grep '^should_run:' | awk '{print $2}')
 
 if [ "$SHOULD_RUN" != "true" ] && [ -z "$FORCE" ]; then
-  echo "skip: $(bash templates/hooks/loopx-sync-check-interval.sh "$STATE_FILE" | grep '^reason:' | cut -d' ' -f2-)"
+  echo "skip: $(bash "$SCRIPT_DIR/loopx-sync-check-interval.sh" "$STATE_FILE" | grep '^reason:' | cut -d' ' -f2-)"
   exit 0
 fi
 
@@ -33,7 +36,7 @@ else
 fi
 
 # Step 3: snapshot
-SNAP_PATH=$(bash templates/hooks/loopx-sync-snapshot.sh make "$STATE_DIR")
+SNAP_PATH=$(bash "$SCRIPT_DIR/loopx-sync-snapshot.sh" make "$STATE_DIR")
 echo "snapshot: $SNAP_PATH"
 
 # Step 4: update LoopX(失败不阻断,走 fail-soft)
@@ -58,7 +61,7 @@ cp templates/skills/loopx-project/SKILL.md /tmp/loopx-sync-current/SKILL.md 2>/d
 } > /tmp/loopx-sync-current/guard.txt
 
 # Step 6: detect conflicts
-DETECT_RESULT=$(bash templates/hooks/loopx-sync-detect-conflicts.sh "$SNAP_PATH" \
+DETECT_RESULT=$(bash "$SCRIPT_DIR/loopx-sync-detect-conflicts.sh" "$SNAP_PATH" \
   /tmp/loopx-sync-current/doctor.json \
   /tmp/loopx-sync-current/SKILL.md \
   /tmp/loopx-sync-current/guard.txt)
@@ -89,7 +92,7 @@ if [ "$LAST_STATUS" = "conflict" ]; then
   TMP_CONFLICTS=$(mktemp)
   trap 'rm -f "$TMP_CONFLICTS"' EXIT
   echo "$DETECT_RESULT" > "$TMP_CONFLICTS"
-  bash templates/hooks/loopx-sync-notify.sh "$STATE_FILE" "$TMP_CONFLICTS" "$STATE_DIR"
+  bash "$SCRIPT_DIR/loopx-sync-notify.sh" "$STATE_FILE" "$TMP_CONFLICTS" "$STATE_DIR"
   echo "{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"event\":\"lock_set\",\"reason\":\"$LOCK_REASON\"}" >> "$STATE_DIR/sync-events.jsonl"
 fi
 

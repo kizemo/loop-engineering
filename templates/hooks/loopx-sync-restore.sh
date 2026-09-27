@@ -4,9 +4,12 @@
 # If no arg, use latest snapshot from state.json
 
 set -e
+# Fix Round 1: derive absolute script dir + use $HOME for cross-CWD robustness
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 SNAP_ARG="$1"
 STATE_FILE="$HOME/.loopx/sync-state.json"
-HOOKS_DIR="$(pwd)/.claude/hooks"
+HOOKS_DIR="$HOME/.claude/hooks"
 
 if [ -n "$SNAP_ARG" ]; then
   SNAP_PATH="$SNAP_ARG"
@@ -23,8 +26,15 @@ if [ -z "$SNAP_PATH" ] || [ ! -d "$SNAP_PATH" ]; then
 fi
 
 echo "→ 还原 $SNAP_PATH → $HOOKS_DIR + $HOME/.loopx"
-RESULT=$(bash templates/hooks/loopx-sync-snapshot.sh restore "$SNAP_PATH" "$HOOKS_DIR" "$HOME/.loopx")
+RESULT=$(bash "$SCRIPT_DIR/loopx-sync-snapshot.sh" restore "$SNAP_PATH" "$HOOKS_DIR" "$HOME/.loopx")
 echo "$RESULT"
+
+# Fix Round 1: assert restore actually populated loopx files (fail-closed if not)
+RESTORED_DIR="$HOME/.loopx"
+if [ ! -d "$RESTORED_DIR/loopx-state" ] && [ ! -f "$RESTORED_DIR/registry.json" ] && [ ! -d "$RESTORED_DIR/codex-goals" ]; then
+  echo "ERROR: restore ran but no loopx files present in $RESTORED_DIR" >&2
+  exit 2
+fi
 
 # 更新 state
 NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
