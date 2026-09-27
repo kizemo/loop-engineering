@@ -71,27 +71,47 @@ elif [ "$ACTION" = "restore" ]; then
 
   RESTORED=0
 
-  # 还原 loopx state
+  # 还原 loopx state(可选源,但若源存在则 fail-closed)
   if [ -d "$SNAP_PATH/loopx-state" ]; then
     mkdir -p "$STATE_DIR/loopx-state"
-    cp -r "$SNAP_PATH/loopx-state/." "$STATE_DIR/loopx-state/" && RESTORED=$((RESTORED + 1))
+    if cp -r "$SNAP_PATH/loopx-state/." "$STATE_DIR/loopx-state/"; then
+      RESTORED=$((RESTORED + 1))
+    else
+      echo "ERROR: restore failed for loopx-state" >&2
+      exit 2
+    fi
   fi
 
-  # 还原 registry
+  # 还原 registry(可选源,但若源存在则 fail-closed)
   if [ -f "$SNAP_PATH/registry.json" ]; then
-    cp "$SNAP_PATH/registry.json" "$STATE_DIR/registry.json" && RESTORED=$((RESTORED + 1))
+    if cp "$SNAP_PATH/registry.json" "$STATE_DIR/registry.json"; then
+      RESTORED=$((RESTORED + 1))
+    else
+      echo "ERROR: restore failed for registry.json" >&2
+      exit 2
+    fi
   fi
 
-  # 还原 codex goals
+  # 还原 codex goals(可选源,但若源存在则 fail-closed)
   if [ -d "$SNAP_PATH/codex-goals" ]; then
     mkdir -p "$STATE_DIR/codex-goals"
-    cp -r "$SNAP_PATH/codex-goals/." "$STATE_DIR/codex-goals/" && RESTORED=$((RESTORED + 1))
+    if cp -r "$SNAP_PATH/codex-goals/." "$STATE_DIR/codex-goals/"; then
+      RESTORED=$((RESTORED + 1))
+    else
+      echo "ERROR: restore failed for codex-goals" >&2
+      exit 2
+    fi
   fi
 
-  # 还原 hooks
+  # 还原 hooks(可选源,但若源存在则 fail-closed)
   if [ -d "$SNAP_PATH/claude-hooks" ]; then
     mkdir -p "$HOOKS_DIR"
-    cp -r "$SNAP_PATH/claude-hooks/." "$HOOKS_DIR/" && RESTORED=$((RESTORED + 1))
+    if cp -r "$SNAP_PATH/claude-hooks/." "$HOOKS_DIR/"; then
+      RESTORED=$((RESTORED + 1))
+    else
+      echo "ERROR: restore failed for claude-hooks" >&2
+      exit 2
+    fi
   fi
 
   echo "restored: $RESTORED"
