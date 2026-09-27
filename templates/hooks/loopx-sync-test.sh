@@ -24,11 +24,20 @@ fail() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
 result=$(bash "$SCRIPT_DIR/loopx-sync-check-interval.sh" "/tmp/nonexistent.json" 2>/dev/null) || true
 echo "$result" | grep -q "should_run: true" && pass "interval: missing state -> run" || fail "interval: missing state"
 
-# Brief's literal arg here is /dev/null which jq chokes on; wrap with
-# `|| true` and check for ERROR on stderr instead. On jq-present systems
-# jq errors will be printed to stderr; we capture stderr separately.
-interval_stderr=$(bash "$SCRIPT_DIR/loopx-sync-check-interval.sh" /dev/null 2>&1 >/dev/null) || true
-echo "$interval_stderr" | grep -q "ERROR" && pass "interval: missing arg -> error" || pass "interval: missing arg tolerated (jq missing on Windows env)"
+# Brief's literal arg here is /dev/null which jq chokes on. With jq
+# installed, the script should emit ERROR on the bad input. If jq is
+# installed and we see no ERROR, that's a real fail (the test was a
+# placeholder before). On envs without jq, SKIP honestly so we don't
+# inflate PASS count. CI installs jq (workflow lines 30-36) so the
+# strict branch fires in real CI.
+result=$(bash "$SCRIPT_DIR/loopx-sync-check-interval.sh" /dev/null 2>&1) || true
+if echo "$result" | grep -q "ERROR"; then
+  pass "interval: missing arg -> error"
+elif command -v jq >/dev/null 2>&1; then
+  fail "interval: missing arg did not error (got: $result)"
+else
+  echo "SKIP: interval: missing arg -- jq unavailable on this env"
+fi
 
 # === Unit: snapshot ===
 TESTDIR=$(mktemp -d)
@@ -52,42 +61,24 @@ cp "$FIXTURE_DIR/interface/doctor-deep-old.json" "$SNAPDIR/loopx-state/loopx-doc
 cp "$FIXTURE_DIR/skill/SKILL-old.md" "$SNAPDIR/claude-hooks/loopx-skill-fixture/SKILL-old.md"
 cp "$FIXTURE_DIR/hook/guard-main-branch-push-old.txt" "$SNAPDIR/claude-hooks/hook-fixture/guard-main-branch-push-old.txt"
 
-# jq is not installed on this Windows env. The detect-conflicts.sh script
-# itself uses jq internally (paths(scalars) etc.), so without jq we get
-# parse failures. Use a lenient jq-fallback: try jq first, fall back to
-# counting error tokens in raw output, fall back further to checking the
-# detector exit code (jq-missing → detector exits 2 with "ERROR:").
-# On CI runners (Linux/macOS) jq is installed, so the first path is
-# exercised and produces real error counts (e.g. 7 for conflict case).
+# jq is a hard requirement for the detect tests — the detector itself
+# uses jq internally (paths(scalars) etc.), and the test's job is to
+# verify the JSON structure it emits. Earlier grep-on-JSON fallback was
+# brittle (sensitive to token vocabulary / quoting) and could silently
+# miscount. CI installs jq (see .github/workflows/loopx-sync-test.yml
+# install step), so this should never fire in practice. If jq is missing
+# the test fails loudly so CI catches the missing dependency.
 detect_err_count() {
-  # $1 = raw detect output, $2 = detector exit code
+  # $1 = raw detect output
   local raw="$1"
-  local det_exit="$2"
-  # Filter bash locale warnings (Windows Git Bash: "LC_ALL: cannot change locale
-  # (zh-CN)") that pollute $() capture with 2>&1. Real signal is JSON.
+  # Filter bash locale warnings (Windows Git Bash: "LC_ALL: cannot change
+  # locale (zh-CN)") that pollute $() capture with 2>&1.
   local clean
   clean=$(echo "$raw" | grep -v "warning: setlocale")
-  # Try jq first (CI Linux/macOS runners have jq)
-  local jq_count
-  jq_count=$(echo "$clean" | jq '[.interface.errors, .skill.errors, .hook.errors] | add | length' 2>/dev/null) || jq_count=""
-  if [ -n "$jq_count" ] && [ "$jq_count" != "null" ]; then
-    echo "$jq_count"
-    return
+  if ! command -v jq >/dev/null 2>&1; then
+    return 1  # signal caller: jq missing -> caller hard-fails
   fi
-  # jq missing or parse failed — count error tokens in raw output
-  local fallback
-  fallback=$(echo "$clean" | grep -oE '"errors":\[[^]]*\]' | grep -oE 'fixture_missing|interface:|skill:|hook:' | wc -l)
-  if [ "$fallback" -gt 0 ]; then
-    echo "$fallback"
-    return
-  fi
-  # jq completely missing — detector exits 2 with "ERROR:" message.
-  # That IS an error signal (fail-closed behavior); count it as 1.
-  if [ "$det_exit" -ne 0 ] && echo "$clean" | grep -q "ERROR"; then
-    echo "1"
-    return
-  fi
-  echo "0"
+  echo "$clean" | jq '[.interface.errors, .skill.errors, .hook.errors] | add | length' 2>/dev/null
 }
 
 # --- conflict case ---
@@ -96,10 +87,16 @@ result=$(bash "$SCRIPT_DIR/loopx-sync-detect-conflicts.sh" "$SNAPDIR" \
   "$FIXTURE_DIR/interface/doctor-deep-new-conflict.json" \
   "$FIXTURE_DIR/skill/SKILL-new-conflict.md" \
   "$FIXTURE_DIR/hook/guard-main-branch-push-new-conflict.txt" 2>&1)
-det_exit=$?
 set -e
-err_count=$(detect_err_count "$result" "$det_exit")
-[ "$err_count" -gt "0" ] && pass "detect: conflict case has errors ($err_count)" || fail "detect: conflict case no errors"
+jq_missing=0
+err_count=$(detect_err_count "$result") || jq_missing=1
+if [ "$jq_missing" = "1" ]; then
+  fail "detect: conflict case -- jq not installed (CI workflow should have installed it)"
+elif [ "$err_count" -gt "0" ]; then
+  pass "detect: conflict case has errors ($err_count)"
+else
+  fail "detect: conflict case no errors"
+fi
 
 # --- clean case ---
 set +e
@@ -107,10 +104,16 @@ result=$(bash "$SCRIPT_DIR/loopx-sync-detect-conflicts.sh" "$SNAPDIR" \
   "$FIXTURE_DIR/interface/doctor-deep-new-ok.json" \
   "$FIXTURE_DIR/skill/SKILL-new-ok.md" \
   "$FIXTURE_DIR/hook/guard-main-branch-push-new-ok.txt" 2>&1)
-det_exit=$?
 set -e
-err_count=$(detect_err_count "$result" "$det_exit")
-[ "$err_count" = "0" ] && pass "detect: clean case no errors" || fail "detect: clean case has $err_count errors"
+jq_missing=0
+err_count=$(detect_err_count "$result") || jq_missing=1
+if [ "$jq_missing" = "1" ]; then
+  fail "detect: clean case -- jq not installed (CI workflow should have installed it)"
+elif [ "$err_count" = "0" ]; then
+  pass "detect: clean case no errors"
+else
+  fail "detect: clean case has $err_count errors"
+fi
 
 rm -rf "$SNAPDIR"
 
