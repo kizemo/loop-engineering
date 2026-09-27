@@ -21,6 +21,12 @@ yarn-error.log
 # LoopX 运行产物
 .loopx/
 
+# LoopX sync (Sub-project D, added 2026-09-27)
+.loopx/snapshots/
+.loopx/sync-banner.txt
+.loopx/sync-events.jsonl
+.loopx/sync-state.json
+
 # 测试产物
 .pytest_cache/
 coverage/
