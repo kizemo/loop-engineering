@@ -43,8 +43,21 @@ run_interface_detect() {
   # with "Cannot index object with array". Hoist via $doc + getpath($p).
   # Also strip trailing CR: jq on Windows emits CRLF, and grep -F strips CR
   # from lines before matching, so a "$line" with \r never matches.
-  local old_fields=$(jq -r '. as $doc | paths(scalars) as $p | $p | join(".") + ":" + ($doc | getpath($p) | type)' "$old" 2>/dev/null | tr -d '\r' | sort)
-  local new_fields=$(jq -r '. as $doc | paths(scalars) as $p | $p | join(".") + ":" + ($doc | getpath($p) | type)' "$new" 2>/dev/null | tr -d '\r' | sort)
+  # Reviewer round 1 fix (Important 1): bash suspends `set -e` across command
+  # substitutions, and pipefail is not enabled, so a jq failure inside a
+  # `local x=$(jq ... | tr | sort)` pipeline is silently swallowed (sort
+  # succeeds on empty input). Check jq's exit code explicitly BEFORE piping
+  # its stdout through tr/sort, and return 2 to signal detector failure to
+  # the dispatcher.
+  local old_fields new_fields jq_out
+  if ! jq_out=$(jq -r '. as $doc | paths(scalars) as $p | $p | join(".") + ":" + ($doc | getpath($p) | type)' "$old" 2>/dev/null); then
+    return 2
+  fi
+  old_fields=$(printf '%s\n' "$jq_out" | tr -d '\r' | sort)
+  if ! jq_out=$(jq -r '. as $doc | paths(scalars) as $p | $p | join(".") + ":" + ($doc | getpath($p) | type)' "$new" 2>/dev/null); then
+    return 2
+  fi
+  new_fields=$(printf '%s\n' "$jq_out" | tr -d '\r' | sort)
 
   local errors=()
   local warnings=()
@@ -151,8 +164,14 @@ run_hook_detect() {
 }
 
 # ---------- 主调度 ----------
-INTERFACE_RESULT=$(run_interface_detect)
-SKILL_RESULT=$(run_skill_detect)
-HOOK_RESULT=$(run_hook_detect)
+# Reviewer round 1 fix (Important 1): bash suspends `set -e` across command
+# substitutions, so a detector that aborts mid-flight (e.g. jq on malformed
+# JSON) would silently produce empty/truncated stdout while exit code stays 0.
+# Check each detector's return code explicitly and exit 2 on detector failure
+# to keep the fail-closed contract: 0 = detectors ran (may have conflicts),
+# 2 = detector itself failed.
+INTERFACE_RESULT=$(run_interface_detect) || { echo "ERROR: interface detector failed" >&2; exit 2; }
+SKILL_RESULT=$(run_skill_detect) || { echo "ERROR: skill detector failed" >&2; exit 2; }
+HOOK_RESULT=$(run_hook_detect) || { echo "ERROR: hook detector failed" >&2; exit 2; }
 
 echo "{\"interface\":$INTERFACE_RESULT,\"skill\":$SKILL_RESULT,\"hook\":$HOOK_RESULT}"
