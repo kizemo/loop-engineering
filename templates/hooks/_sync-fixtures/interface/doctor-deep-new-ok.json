@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "loopx_version": "1.5.0",
+  "diagnostics": [
+    {"name": "objective", "status": "ok"},
+    {"name": "quota", "status": "ok"}
+  ],
+  "quota_should_run": {
+    "should_run": true,
+    "goal_boundary": "2026-10-01"
+  }
+}

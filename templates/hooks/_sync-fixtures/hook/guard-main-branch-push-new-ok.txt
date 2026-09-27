@@ -1,0 +1,3 @@
+exit_code=2
+stderr="ERROR: pushing to main branch is restricted. Pass --review or use a feature branch."
+jsonl={"ts":"2026-09-20T10:00:00Z","hook_name":"guard-main-branch-push","tool_name":"Bash","block_reason":"main_branch_push","exit_code":2}
