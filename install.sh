@@ -38,9 +38,18 @@ EOF
 # === Sub-project D: LoopX upstream sync (added 2026-09-27) ===
 # Usage: install.sh --with-loopx-sync
 # Default: NOT enabled (backward compat 100%)
-if [ "$1" = "--with-loopx-sync" ] || [ "$1" = "--upgrade-loopx-sync" ]; then
-  WITH_LOOPX_SYNC=1
-  shift
+# Scan ALL args so --with-loopx-sync can appear anywhere in the command line.
+# Also rebuild $@ without these flags so the while-loop below doesn't reject them as unknown.
+NEW_ARGS=()
+for arg in "$@"; do
+  if [ "$arg" = "--with-loopx-sync" ] || [ "$arg" = "--upgrade-loopx-sync" ]; then
+    WITH_LOOPX_SYNC=1
+  else
+    NEW_ARGS+=("$arg")
+  fi
+done
+if [ "$WITH_LOOPX_SYNC" = "1" ] && [ ${#NEW_ARGS[@]} -ne $# ]; then
+  set -- "${NEW_ARGS[@]}"
 fi
 
 while [[ $# -gt 0 ]]; do
@@ -136,13 +145,12 @@ echo "Docs: $SCRIPT_DIR/README.md"
 # Usage: install.sh --with-loopx-sync
 # Default: NOT enabled (backward compat 100%)
 if [ "$WITH_LOOPX_SYNC" = "1" ]; then
-  HOOK_DIR="templates/hooks"
   # 注册 SessionStart hook(若 settings.json 已有 hook 数组则追加)
   SETTINGS_FILE="$HOME/.claude/settings.json"
   if [ -f "$SETTINGS_FILE" ]; then
     # 用 jq 安全追加
     TMP_SETTINGS=$(mktemp)
-    jq '.hooks.SessionStart = (.hooks.SessionStart // []) + [{"matcher": "", "hooks": [{"type": "command", "command": "bash templates/hooks/loopx-sync.sh"}]}]' "$SETTINGS_FILE" > "$TMP_SETTINGS" && mv "$TMP_SETTINGS" "$SETTINGS_FILE"
+    jq --arg cmd "bash ${SCRIPT_DIR}/templates/hooks/loopx-sync.sh" '.hooks.SessionStart = (.hooks.SessionStart // []) + [{"matcher": "", "hooks": [{"type": "command", "command": $cmd}]}]' "$SETTINGS_FILE" > "$TMP_SETTINGS" && mv "$TMP_SETTINGS" "$SETTINGS_FILE"
     echo "✓ LoopX sync SessionStart hook 已注册到 $SETTINGS_FILE"
   else
     echo "WARN: $SETTINGS_FILE 不存在,请先跑 install.sh 基础安装" >&2
