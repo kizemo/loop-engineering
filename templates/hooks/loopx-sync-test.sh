@@ -24,19 +24,23 @@ fail() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
 result=$(bash "$SCRIPT_DIR/loopx-sync-check-interval.sh" "/tmp/nonexistent.json" 2>/dev/null) || true
 echo "$result" | grep -q "should_run: true" && pass "interval: missing state -> run" || fail "interval: missing state"
 
-# Brief's literal arg here is /dev/null which jq chokes on. With jq
-# installed, the script should emit ERROR on the bad input. If jq is
-# installed and we see no ERROR, that's a real fail (the test was a
-# placeholder before). On envs without jq, SKIP honestly so we don't
-# inflate PASS count. CI installs jq (workflow lines 30-36) so the
-# strict branch fires in real CI.
-result=$(bash "$SCRIPT_DIR/loopx-sync-check-interval.sh" /dev/null 2>&1) || true
+# Round 2 fix: /dev/null is a char device on POSIX (not a regular file),
+# so `[ -f /dev/null ]` is FALSE and the script falls into Case 1
+# (state_missing) — no ERROR. Retarget to an empty regular file (mktemp):
+# `[ -f "$EMPTY_FILE" ]` is TRUE, but jq reads nothing from it so both
+# LAST_SYNC and LAST_STATUS are empty, triggering the "state corrupted"
+# ERROR path (exit 2). This makes the strict branch fire on Linux/macOS
+# CI with jq installed, and SKIP honestly on bare envs without jq.
+EMPTY_FILE=$(mktemp)
+touch "$EMPTY_FILE"
+result=$(bash "$SCRIPT_DIR/loopx-sync-check-interval.sh" "$EMPTY_FILE" 2>&1) || true
+rm -f "$EMPTY_FILE"
 if echo "$result" | grep -q "ERROR"; then
-  pass "interval: missing arg -> error"
+  pass "interval: corrupted state -> error"
 elif command -v jq >/dev/null 2>&1; then
-  fail "interval: missing arg did not error (got: $result)"
+  fail "interval: corrupted state did not error (got: $result)"
 else
-  echo "SKIP: interval: missing arg -- jq unavailable on this env"
+  echo "SKIP: interval: corrupted state -- jq unavailable on this env"
 fi
 
 # === Unit: snapshot ===
