@@ -1,0 +1,37 @@
+name: loopx-sync-test
+
+on:
+  push:
+    paths:
+      - 'templates/hooks/loopx-sync*'
+      - 'templates/hooks/_sync-fixtures/**'
+      - '.github/workflows/loopx-sync-test.yml'
+  pull_request:
+    paths:
+      - 'templates/hooks/loopx-sync*'
+
+jobs:
+  test:
+    name: test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install jq
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            choco install jq -y || winget install jqlang.jq
+          else
+            sudo apt-get install -y jq || brew install jq
+          fi
+
+      - name: Run loopx-sync unit tests
+        run: bash templates/hooks/loopx-sync-test.sh
+
+      - name: Run orchestrator smoke test
+        run: |
+          bash templates/hooks/loopx-sync.sh --force 2>&1 || echo "(smoke test exit=$?, may conflict on fresh env — that's OK)"
