@@ -48,3 +48,7 @@ secrets/
 # 参见 README.md §七 和各 handoff-*.md 的"接力时刻"
 handoff-*.md
 prompt-*-next.md
+
+# 用户本地安装的 Claude hook 副本(测试 residue,不入产品仓库)
+# install.sh --with-loopx-sync 会写到 $HOME/.claude/hooks/;开发期 templates/hooks/ 是 source of truth
+.claude/hooks/
