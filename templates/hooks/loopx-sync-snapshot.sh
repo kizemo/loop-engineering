@@ -37,12 +37,12 @@ if [ "$ACTION" = "make" ]; then
     cp -r "$HOME/.codex/goals/." "$TARGET/codex-goals/" 2>/dev/null || true
   fi
 
-  # 复制 hooks(从当前 dir .claude/hooks)
-  if [ -d ".claude/hooks" ]; then
-    cp -r ".claude/hooks/." "$TARGET/claude-hooks/" 2>/dev/null || true
+  # 复制 hooks(从 $HOME/.claude/hooks)
+  if [ -d "$HOME/.claude/hooks" ]; then
+    cp -r "$HOME/.claude/hooks/." "$TARGET/claude-hooks/"
   fi
-  if [ -f ".claude/guard-rails.yaml" ]; then
-    cp ".claude/guard-rails.yaml" "$TARGET/claude-hooks/guard-rails.yaml" 2>/dev/null || true
+  if [ -f "$HOME/.claude/guard-rails.yaml" ]; then
+    cp "$HOME/.claude/guard-rails.yaml" "$TARGET/claude-hooks/guard-rails.yaml"
   fi
 
   # 写 manifest.json
@@ -73,25 +73,25 @@ elif [ "$ACTION" = "restore" ]; then
 
   # 还原 loopx state
   if [ -d "$SNAP_PATH/loopx-state" ]; then
-    mkdir -p "$HOME/.loopx/state"
-    cp -r "$SNAP_PATH/loopx-state/." "$HOME/.loopx/state/" 2>/dev/null && RESTORED=$((RESTORED + 1))
+    mkdir -p "$STATE_DIR/loopx-state"
+    cp -r "$SNAP_PATH/loopx-state/." "$STATE_DIR/loopx-state/" && RESTORED=$((RESTORED + 1))
   fi
 
   # 还原 registry
   if [ -f "$SNAP_PATH/registry.json" ]; then
-    cp "$SNAP_PATH/registry.json" "$HOME/.loopx/registry.json" 2>/dev/null && RESTORED=$((RESTORED + 1))
+    cp "$SNAP_PATH/registry.json" "$STATE_DIR/registry.json" && RESTORED=$((RESTORED + 1))
   fi
 
   # 还原 codex goals
   if [ -d "$SNAP_PATH/codex-goals" ]; then
-    mkdir -p "$HOME/.codex/goals"
-    cp -r "$SNAP_PATH/codex-goals/." "$HOME/.codex/goals/" 2>/dev/null && RESTORED=$((RESTORED + 1))
+    mkdir -p "$STATE_DIR/codex-goals"
+    cp -r "$SNAP_PATH/codex-goals/." "$STATE_DIR/codex-goals/" && RESTORED=$((RESTORED + 1))
   fi
 
   # 还原 hooks
   if [ -d "$SNAP_PATH/claude-hooks" ]; then
     mkdir -p "$HOOKS_DIR"
-    cp -r "$SNAP_PATH/claude-hooks/." "$HOOKS_DIR/" 2>/dev/null && RESTORED=$((RESTORED + 1))
+    cp -r "$SNAP_PATH/claude-hooks/." "$HOOKS_DIR/" && RESTORED=$((RESTORED + 1))
   fi
 
   echo "restored: $RESTORED"
