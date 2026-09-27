@@ -1,9 +1,15 @@
 # Loop Engineering · OpenClaw 兼容层 Design Spec
 
-> **状态**:DRAFT · **创建日期**:2026-09-27 · **粒度**:中(架构 + 接口 + 任务大纲)
+> **状态**:DRAFT v2 · **创建日期**:2026-09-27 · **粒度**:中(架构 + 接口 + 任务大纲)
+> **修订**:v2(2026-09-27)— 加 IPC 常驻进程 / Windows 全支持 / 单源 SKILL / 性能预算 < 50ms
 > **范围**:Sub-project A · "loop-engineering 5 hook + 3 skill 在 OpenClaw 生态里也能跑"
 > **作者**:research session · 接力关系:本 spec 经用户审核后,交给 writing-plans 制定实施计划
 > **研究输入**:`.superpowers/research/openclaw-hooks.md` + `.superpowers/research/cc-vs-openclaw-hooks.md`
+> **用户决策(2026-09-27)**:
+> 1. ✅ 真做 core 重写(5 hook 改 thin wrapper,核心搬 TS,46-case 复测必须全 PASS)
+> 2. ✅ Windows 全支持(Linux + Windows CI 矩阵必须双绿,OpenClaw Gateway + node IPC + bash/powershell hook)
+> 3. ✅ 常驻 node 进程(Phase 1 上 IPC,延迟 < 50ms;不再等 Phase 2)
+> 4. ✅ 单源 SKILL.md + 扩展 frontmatter(`metadata.openclaw.*` 段,CC 端忽略)
 
 ---
 
@@ -59,64 +65,83 @@ Sub-project A 服务于两条用户原始目标:
 |---|---|---|---|
 | 1 | compat 策略 | **Phase 1: runtime detect + dual output**;Phase 2: 可选 manifest auto-gen | Adapter 层(双 runtime 抽象);Dual emit 单脚本(耦合) |
 | 2 | core 逻辑与 runtime 分离 | **必须分离** — core 是 TS,adapter 各 ~20 行 | 单脚本(难测试,难维护) |
-| 3 | 语言选型 | **TypeScript(OpenClaw plugin) + Bash(Claude Code hook)** | 全 TypeScript(CC 端需要 node) |
+| 3 | 语言选型 | **TypeScript(core + OpenClaw plugin) + Bash/PowerShell(CC adapter)** | 全 TypeScript(CC 端需要 node,且失去 PowerShell) |
 | 4 | 工具名映射 | **adapter 内 TOOL_ALIAS 表**(`Bash`/`exec` → `exec`) | 透明转换(失去可读性) |
 | 5 | Skill 双发布 | **单源 + frontmatter 扩展**(`metadata.openclaw.events`) | install 脚本分发两份 |
 | 6 | 测试矩阵 | **同一 fixture 跑两个 runtime**,输出对照 | 各自独立测试 |
-| 7 | CI 范围 | **GitHub Actions 加 `openclaw-test` job**,只在 Linux 跑 | 全平台跑 OpenClaw(Gateway 限制) |
+| 7 | CI 范围 | **GitHub Actions 加 `openclaw-test` job**,**Linux + Windows 双矩阵** | 只 Linux(违反 v2 决策) |
 | 8 | install flag | **`--with-openclaw`**,与 `--with-loopx-sync` 一致 | 默认开(增量风险) |
 | 9 | 文档 | **新增 `docs/openclaw-compat.md`** 主文档 + hook README 加 OpenClaw 段 | 拆 6 个文档(过度设计) |
 | 10 | Phase 2(manifest) | **留口子但本次不实施** | 现在就上(过度工程) |
+| 11 | **Core 重写** | **必做** — 5 hook 改 thin wrapper,匹配逻辑搬 TS,**46-case 回归测试 gate** | 不重写(无法跨 runtime 复用) |
+| 12 | **Windows 支持** | **必做** — OpenClaw Gateway(node) + CC PowerShell adapter + Node IPC(命名管道)+ Windows CI job | 只 Linux(违反 v2 决策) |
+| 13 | **常驻 node 进程** | **必做,Phase 1** — IPC(Unix socket / Windows named pipe)+ 延迟 < 50ms | 等 Phase 2(违反 v2 决策;node 启动 ~100ms 不可接受) |
+| 14 | **SKILL 单源** | **必做** — frontmatter 扩展 `metadata.openclaw.*`,CC 忽略无关段 | install 分发两份(违反 v2 决策) |
 
 ---
 
 ## 3. 架构设计
 
-### 3.1 三层抽象
+### 3.1 四层抽象(IPC 层新增)
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│ Layer 3 · Runtime Detection & Output Adapters                │
-│ ─────────────────────────────────────────────────             │
-│ Claude Code (Bash/Node)              OpenClaw (TypeScript)    │
-│   templates/openclaw/adapters/cc.sh    templates/openclaw/    │
-│   (read stdin, exit 2 or JSON)         adapters/openclaw.ts   │
-│                                          (api.on, return obj) │
-├──────────────────────────────────────────────────────────────┤
-│ Layer 2 · Tool Name & Event Mapping                          │
-│ ────────────────────────────────────                         │
-│   TOOL_ALIAS = { "Bash":"exec", "exec":"exec",              │
-│                   "Write":"write", "write":"write", ... }    │
-│   EVENT_ALIAS = { "PreToolUse":"before_tool_call" }          │
-├──────────────────────────────────────────────────────────────┤
-│ Layer 1 · Core Logic (100% shared, no IO)                    │
-│ ────────────────────────────────────                         │
-│   checkSecretPath(toolName, params)                          │
-│   checkMainBranchPush(toolName, params)                      │
-│   checkDbMigration(toolName, params)                         │
-│   checkPackagePublish(toolName, params)                      │
-│   checkInstallerPath(toolName, params)                       │
-│   → returns { block: bool, reason?: string }                │
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│ Layer 4 · Runtime Detection & Output Adapters(跨平台)                │
+│ ─────────────────────────────────────────────────                      │
+│ Claude Code (Bash/PowerShell)              OpenClaw (TypeScript)       │
+│   templates/openclaw/adapters/                templates/openclaw/     │
+│     ├── cc.sh   (Linux/Mac Git-Bash)            adapters/openclaw.ts   │
+│     └── cc.ps1  (Windows PowerShell)           (api.on, return obj)    │
+│   IPC client: send JSON via socket → read response                    │
+├────────────────────────────────────────────────────────────────────────┤
+│ Layer 3 · IPC Transport(常驻 node 进程)                              │
+│ ─────────────────────────────────────────────────                      │
+│   templates/openclaw/ipc-server.ts                                       │
+│     ├── 启动:install.sh spawn,后台运行                                  │
+│     ├── Unix socket (Linux/Mac):$XDG_RUNTIME_DIR/loopx-guard.sock     │
+│     ├── Named pipe (Windows):\\.\pipe\loopx-guard                      │
+│     ├── 协议:JSON request → JSON response                            │
+│     ├── 心跳:30s ping,无响应自动重启                                   │
+│     └── 进程模型:一个 server,N 个 CC adapter 客户端连                 │
+├────────────────────────────────────────────────────────────────────────┤
+│ Layer 2 · Tool Name & Event Mapping                                     │
+│ ────────────────────────────────────                                    │
+│   TOOL_ALIAS = { "Bash":"exec", "exec":"exec",                        │
+│                   "Write":"write", "write":"write", ... }              │
+│   EVENT_ALIAS = { "PreToolUse":"before_tool_call" }                   │
+├────────────────────────────────────────────────────────────────────────┤
+│ Layer 1 · Core Logic (100% shared, no IO)                             │
+│ ────────────────────────────────────                                    │
+│   checkSecretPath(toolName, params)                                    │
+│   checkMainBranchPush(toolName, params)                                │
+│   checkDbMigration(toolName, params)                                   │
+│   checkPackagePublish(toolName, params)                                │
+│   checkInstallerPath(toolName, params)                                 │
+│   → returns { block: bool, reason?: string }                           │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 3.2 Runtime detect 协议
 
 ```typescript
 // OpenClaw runtime: api.on("before_tool_call", handler)
-//   ↑ handler 收到的是 typed event,直接走 core logic
+//   ↑ handler 收到的是 typed event,直接 in-process 调 core logic(无 IPC 开销)
 //   ↑ return { block, blockReason } 给 OpenClaw
 
-// Claude Code runtime: shell script 读 stdin JSON
-//   ↑ shell 脚本 runtime 检测方式:
-//     - 若 $CLAUDE_CODE=1 → Claude Code 模式
-//     - 若 $OPENCLAW_ACTIVE=1 → OpenClaw 模式
-//     - 都不存在 → 默认 Claude Code(backward compat)
+// Claude Code runtime: shell/powershell 脚本读 stdin JSON
+//   ↑ 脚本通过 IPC socket 发送到常驻 ipc-server
+//   ↑ 若 server 未启动:fallback 到 spawn sync 启动(冷启动,~100ms)
+//   ↑ 若 server 已启动:IPC call ~5ms
 ```
 
-**关键设计**:Claude Code hook 脚本不需要知道 OpenClaw;**OpenClaw adapter 包 Claude Code hook 脚本**(用 child_process spawn sync 跑 cc hook,parse exit code + stdout)。
+**关键设计**:
+- **OpenClaw adapter 是 in-process**(同 node 进程,无 IPC)— 性能最优
+- **Claude Code adapter 走 IPC socket**(跨进程,跨平台)— 延迟 < 50ms
+- **Server 进程**:`install.sh` 启动一次,后台 daemonize;每次 hook 复用
 
 ### 3.3 数据流
+
+#### 3.3.1 OpenClaw(in-process)
 
 ```
 OpenClaw agent 触发工具调用
@@ -125,15 +150,13 @@ OpenClaw agent 触发工具调用
 plugin hook: before_tool_call
         │
         ▼
-adapter/openclaw.ts (Layer 3)
+adapter/openclaw.ts (Layer 4, in-process)
    │
    ├── 解析 event.toolName → TOOL_ALIAS → exec/write/edit
-   ├── 提取 event.params (tool input)
+   ├── 提取 event.params
    │
    ▼
-core-logic.ts (Layer 1)
-   │
-   ├── 跑同一个匹配逻辑
+core/check-*.ts (Layer 1, in-process)
    │
    ▼
 { block: bool, reason?: string }
@@ -142,8 +165,56 @@ core-logic.ts (Layer 1)
 adapter/openclaw.ts
    │
    ├── 若 block → return { block: true, blockReason }
-   └── 若 allow → return undefined(让 OpenClaw 继续)
+   └── 若 allow → return undefined
 ```
+
+延迟:< 5ms(in-process)
+
+#### 3.3.2 Claude Code(IPC)
+
+```
+Claude Code 触发 hook
+        │
+        ▼
+adapter/cc.sh 或 cc.ps1 (Layer 4)
+   │
+   ├── 读 stdin JSON
+   ├── 尝试连接 IPC socket($XDG_RUNTIME_DIR/loopx-guard.sock 或 \\.\pipe\loopx-guard)
+   │
+   ├── 若连接成功:send JSON,read response
+   └── 若未启动:fallback spawn sync 启动 server,等 2s,重连
+   │
+   ▼
+ipc-server.ts (Layer 3, 常驻进程)
+   │
+   ├── 解析 JSON,normalize toolName
+   ├── 跑 5 个 check
+   │
+   ▼
+{ block: bool, reason: string } (JSON response)
+   │
+   ▼
+adapter/cc.sh
+   │
+   ├── 若 block → 写 stderr reason,exit 2
+   └── 若 allow → exit 0
+```
+
+延迟:< 50ms(IPC),< 100ms(cold start)
+
+### 3.4 跨平台差异处理
+
+| 维度 | Linux/macOS | Windows |
+|---|---|---|
+| IPC transport | Unix domain socket | Named pipe(`\\.\pipe\<name>`) |
+| Socket 路径 | `$XDG_RUNTIME_DIR/loopx-guard.sock` 或 `$TMPDIR/loopx-guard.sock` | `\\.\pipe\loopx-guard` |
+| Server 进程 | `node ipc-server.ts &`(nohup) | `Start-Process node -ArgumentList ...`(后台) |
+| Server 状态查询 | `pgrep -f ipc-server` | `Get-Process node \| Where-Object ...` |
+| Hook 脚本 | bash(本仓库已有,Git Bash 也行) | PowerShell 7+ |
+| OpenClaw Gateway | node 启动 | node 启动(PowerShell 调 node)|
+| 测试 | bash + node | PowerShell + node(用 `pwsh` 跑) |
+
+**Node.js `net` 模块**原生支持两种 transport,server 代码 95% 共享,只有 `createServer.listen(path)` 路径字符串不同。
 
 ---
 
@@ -152,51 +223,74 @@ adapter/openclaw.ts
 ```
 loop-engineering/
 ├── templates/
-│   ├── hooks/                      ← 现有(Claude Code 5 hook,不动)
-│   ├── openclaw/                   ← 新增(Sub-project A 交付物)
-│   │   ├── README.md               ← OpenClaw 集成指南
-│   │   ├── adapters/
-│   │   │   ├── cc.sh               ← Claude Code side adapter(Bash)
-│   │   │   └── openclaw.ts         ← OpenClaw plugin side adapter(TS)
-│   │   ├── core/
-│   │   │   ├── index.ts            ← 统一入口 + TOOL_ALIAS + EVENT_ALIAS
-│   │   │   ├── check-secret-path.ts
-│   │   │   ├── check-main-branch-push.ts
-│   │   │   ├── check-db-migration.ts
-│   │   │   ├── check-package-publish.ts
-│   │   │   └── check-installer-path.ts
-│   │   ├── plugin/                 ← OpenClaw plugin 入口
-│   │   │   ├── package.json
-│   │   │   ├── openclaw.plugin.ts  ← plugin 主体(register hooks)
-│   │   │   └── tsconfig.json
-│   │   └── hooks/                  ← HOOK.md 元数据(给 openclaw hooks list)
-│   │       ├── guard-secret-files/
-│   │       │   ├── HOOK.md
-│   │       │   └── handler.ts      ← thin wrapper 调 core
-│   │       ├── guard-main-branch-push/
-│   │       ├── guard-db-migration/
-│   │       ├── guard-package-publish/
-│   │       └── guard-installer-path/
-│   └── skills/                     ← 现有 SKILL.md,frontmatter 扩展 metadata.openclaw.*
+│   ├── hooks/                      ← 现有(Claude Code 5 hook,**全改为 thin wrapper**)
+│   │   ├── guard-secret-files.ts   ← 改:原 .js 逻辑搬 TS core,这里只 IPC call
+│   │   ├── guard-main-branch-push.ts ← 改:同
+│   │   ├── guard-db-migration.ts   ← 改:同
+│   │   ├── guard-package-publish.ts ← 改:同
+│   │   ├── guard-installer-path.ts ← 改:同
+│   │   ├── guard-event-writer.sh   ← 不动(IPC server 内 spawn sync 调)
+│   │   ├── guard-event-writer.py   ← 不动
+│   │   └── guard-rails-test.sh     ← 不动(46 case 回归测试)
+│   └── openclaw/                   ← 新增(Sub-project A 交付物)
+│       ├── README.md               ← OpenClaw 集成指南
+│       ├── adapters/
+│       │   ├── cc.sh               ← Claude Code adapter(Bash,Linux/Mac)
+│       │   ├── cc.ps1              ← Claude Code adapter(PowerShell,Windows)
+│       │   └── openclaw.ts         ← OpenClaw plugin adapter(TS,跨平台 in-process)
+│       ├── core/                   ← 共享 core logic(纯 TS,无 IO)
+│       │   ├── index.ts            ← 统一入口 + TOOL_ALIAS + EVENT_ALIAS
+│       │   ├── normalize.ts        ← input 规范化(Layer 2)
+│       │   ├── types.ts            ← CheckContext / CheckResult / 等
+│       │   ├── check-secret-path.ts
+│       │   ├── check-main-branch-push.ts
+│       │   ├── check-db-migration.ts
+│       │   ├── check-package-publish.ts
+│       │   └── check-installer-path.ts
+│       ├── ipc/                    ← IPC 传输层(常驻 node 进程)
+│       │   ├── server.ts           ← 常驻 server(跨平台 socket/pipe)
+│       │   ├── client.ts           ← 客户端库(给 cc adapter 用)
+│       │   ├── protocol.ts         ← 请求/响应 JSON schema
+│       │   └── platform.ts         ← 平台差异(Linux/Mac socket vs Windows pipe)
+│       ├── plugin/                 ← OpenClaw plugin 入口
+│       │   ├── package.json
+│       │   ├── openclaw.plugin.ts  ← plugin 主体(register hooks)
+│       │   └── tsconfig.json
+│       └── hooks/                  ← HOOK.md 元数据(给 openclaw hooks list)
+│           ├── guard-secret-files/
+│           │   ├── HOOK.md
+│           │   └── handler.ts      ← thin wrapper(in-process 调 core)
+│           ├── guard-main-branch-push/
+│           ├── guard-db-migration/
+│           ├── guard-package-publish/
+│           └── guard-installer-path/
 │
 ├── docs/
-│   └── openclaw-compat.md          ← 主文档(~250 行)
+│   └── openclaw-compat.md          ← 主文档(~300 行)
 │
 ├── .github/workflows/
-│   └── openclaw-test.yml           ← 新增 CI,Linux-only
+│   └── openclaw-test.yml           ← 新增 CI,**Linux + Windows 矩阵**
 │
-├── install.sh / install.ps1        ← 加 --with-openclaw flag
+├── install.sh / install.ps1        ← 加 --with-openclaw flag + server 启动逻辑
 └── tests/openclaw/                 ← 跨 runtime 测试
-    ├── fixtures/
+    ├── fixtures/                   ← CC + OpenClaw 两套 input(同义不同格式)
     │   ├── secret-write.json
     │   ├── secret-write-allow.json
     │   ├── main-push.json
     │   └── ...
-    ├── run-all.sh                  ← 跑两遍 runtime,assert 行为一致
+    ├── run-all.sh                  ← Linux/Mac runner
+    ├── run-all.ps1                 ← Windows runner
+    ├── ipc-server-test.sh          ← IPC server 单元测试
     └── README.md
 ```
 
-**文件总数**:~25 个(15 个新 + 10 个改)
+**文件总数**:~35 个(25 个新 + 10 个改)
+
+**关键变化**:
+- 5 hook 现有 `.js`/`.sh`/`.py` → 全改 `.ts`(thin wrapper + IPC call)
+- 新增 `ipc/` 目录 4 文件(server / client / protocol / platform)
+- 新增 PowerShell adapter `cc.ps1`
+- 测试加 `run-all.ps1` + `ipc-server-test.sh`
 
 ---
 
@@ -262,8 +356,6 @@ export const TOOL_ALIAS: Record<string, ToolName> = {
   "apply_patch": "apply_patch",
   "web_fetch": "web_fetch",
   "web_search": "web_search",
-  // Bash 提取(参数语义)
-  // exec.params.command → exec(语义保持)
 };
 
 export function normalize(toolName: string, params: any): CheckContext {
@@ -274,33 +366,187 @@ export function normalize(toolName: string, params: any): CheckContext {
 }
 ```
 
-### 5.3 Claude Code Adapter(Layer 3, Bash)
+### 5.3 IPC 协议(Layer 3)
+
+#### 5.3.1 Transport
+
+| Platform | Transport | 地址 |
+|---|---|---|
+| Linux/macOS | Unix domain socket | `$XDG_RUNTIME_DIR/loopx-guard.sock` 或 fallback `$TMPDIR/loopx-guard.sock` |
+| Windows | Named pipe | `\\.\pipe\loopx-guard` |
+
+**Node.js `net` 模块**:`net.createServer().listen(path)` 自动识别 socket 或 pipe(Windows)。
+
+#### 5.3.2 协议(请求/响应,JSON 行分隔)
+
+**请求**(client → server):
+```json
+{"id":"uuid-v4","action":"check","toolName":"Bash","params":{"command":"git push origin main"},"cwd":"/path/to/proj"}
+```
+
+**响应**(server → client):
+```json
+{"id":"uuid-v4","results":[{"check":"main-branch-push","block":true,"reason":"direct push to protected ref","severity":"critical"}]}
+```
+
+**错误响应**:
+```json
+{"id":"uuid-v4","error":"core-not-loaded","message":"checks not registered"}
+```
+
+#### 5.3.3 Server 进程管理
+
+```typescript
+// templates/openclaw/ipc/server.ts
+import * as net from "net";
+import { platform } from "process";
+import { checks } from "../core";
+
+const SOCKET_PATH = process.platform === "win32"
+  ? "\\\\.\\pipe\\loopx-guard"
+  : (process.env.XDG_RUNTIME_DIR || process.env.TMPDIR || "/tmp") + "/loopx-guard.sock";
+
+const server = net.createServer((socket) => {
+  let buf = "";
+  socket.on("data", (chunk) => {
+    buf += chunk.toString("utf8");
+    let nl;
+    while ((nl = buf.indexOf("\n")) !== -1) {
+      const line = buf.slice(0, nl);
+      buf = buf.slice(nl + 1);
+      handleRequest(socket, line);
+    }
+  });
+});
+
+function handleRequest(socket: net.Socket, line: string) {
+  try {
+    const req = JSON.parse(line);
+    const ctx = normalize(req.toolName, req.params);
+    const results = Object.entries(checks).map(([name, fn]) => ({
+      check: name,
+      ...fn(ctx),
+    }));
+    const blocker = results.find((r) => r.block);
+    socket.write(JSON.stringify({ id: req.id, results }) + "\n");
+  } catch (e: any) {
+    socket.write(JSON.stringify({ id: "?", error: "parse-failed", message: e.message }) + "\n");
+  }
+}
+
+server.listen(SOCKET_PATH, () => {
+  // 输出 PID + socket path 给 install.sh 记录
+  console.log(JSON.stringify({ ready: true, pid: process.pid, socket: SOCKET_PATH }));
+});
+```
+
+#### 5.3.4 Client(给 cc adapter 用)
+
+```typescript
+// templates/openclaw/ipc/client.ts
+import * as net from "net";
+import { platform } from "process";
+import { randomUUID } from "crypto";
+
+export async function ipcCheck(req: Omit<IpcRequest, "id">): Promise<IpcResponse> {
+  const path = process.platform === "win32"
+    ? "\\\\.\\pipe\\loopx-guard"
+    : (process.env.LOOPX_GUARD_SOCK || defaultPath());
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection(path);
+    const id = randomUUID();
+    let buf = "";
+    socket.on("connect", () => {
+      socket.write(JSON.stringify({ id, ...req }) + "\n");
+    });
+    socket.on("data", (chunk) => {
+      buf += chunk.toString("utf8");
+      const nl = buf.indexOf("\n");
+      if (nl !== -1) {
+        const resp = JSON.parse(buf.slice(0, nl));
+        resolve(resp);
+        socket.end();
+      }
+    });
+    socket.on("error", (e) => reject(e));
+    setTimeout(() => { socket.destroy(); reject(new Error("ipc-timeout")); }, 5000);
+  });
+}
+```
+
+### 5.4 Claude Code Adapter(Layer 4)
+
+#### 5.4.1 cc.sh(Linux/macOS)
 
 ```bash
 #!/usr/bin/env bash
 # templates/openclaw/adapters/cc.sh
-# Claude Code 端的 compat 入口(就是现有 hook 脚本,无需新文件)
-# 行为:读 stdin JSON → 提取 tool_name + tool_input → 调 node core logic
-# 输出:exit 0 (allow) 或 exit 2 (block,stderr 给 reason)
+# Claude Code 端的 compat 入口(Linux/macOS)
+# 行为:读 stdin JSON → IPC call to server → 解析 response → exit code
+# Fallback:server 未启动 → spawn sync 启动 → 等 2s → 重试
 
+set -u
 input=$(cat)
-node -e "
-  const { normalize, checks } = require('./templates/openclaw/core');
-  const ev = JSON.parse(process.argv[1]);
-  const ctx = normalize(ev.tool_name, ev);
-  for (const [name, fn] of Object.entries(checks)) {
-    const r = fn(ctx);
-    if (r.block) {
-      console.error('[' + name + '] BLOCKED: ' + r.reason);
+SOCK="${LOOPX_GUARD_SOCK:-${XDG_RUNTIME_DIR:-/tmp}/loopx-guard.sock}"
+
+# 尝试 IPC
+result=$(node -e "
+  const { ipcCheck } = require('./templates/openclaw/ipc/client');
+  const req = JSON.parse(process.argv[1]);
+  ipcCheck(req).then((r) => {
+    const blocker = r.results.find(x => x.block);
+    if (blocker) {
+      console.error('[' + blocker.check + '] BLOCKED: ' + blocker.reason);
       process.exit(2);
     }
-  }
-" "$input"
+    process.exit(0);
+  }).catch((e) => {
+    console.error('ipc-failed: ' + e.message);
+    process.exit(1);
+  });
+" "$input" 2>&1) || {
+  # IPC 失败 → fallback cold start
+  if [ ! -f "${SOCK}.pid" ]; then
+    node templates/openclaw/ipc/server.ts &
+    SERVER_PID=$!
+    echo $SERVER_PID > "${SOCK}.pid"
+    sleep 2
+  fi
+  # 重试(同上代码,略)
+}
+
+exit $?
 ```
 
-**关键洞察**:**这个 cc.sh 不是新文件,而是改写现有 5 hook 的内部实现** — 现有 hook 的匹配逻辑搬到 TS core,hook 脚本变成 thin wrapper。
+#### 5.4.2 cc.ps1(Windows)
 
-### 5.4 OpenClaw Adapter(Layer 3, TypeScript)
+```powershell
+# templates/openclaw/adapters/cc.ps1
+# Claude Code 端的 compat 入口(Windows)
+# 行为同 cc.sh,只是 PowerShell 语法
+
+$input = [Console]::In.ReadToEnd()
+$pipeName = "loopx-guard"
+
+# 转 JSON 给 node IPC client
+$result = node -e "
+  const { ipcCheck } = require('./templates/openclaw/ipc/client');
+  const req = JSON.parse(process.argv[1]);
+  ipcCheck(req).then((r) => {
+    const blocker = r.results.find(x => x.block);
+    if (blocker) {
+      console.error('[' + blocker.check + '] BLOCKED: ' + blocker.reason);
+      process.exit(2);
+    }
+    process.exit(0);
+  });
+" $input
+
+if ($LASTEXITCODE -eq 2) { exit 2 }
+exit 0
+```
+
+### 5.5 OpenClaw Adapter(Layer 4, TypeScript, in-process)
 
 ```typescript
 // templates/openclaw/adapters/openclaw.ts
@@ -309,6 +555,7 @@ import { normalize, checks } from "../core";
 
 export function register(api: HookAPI): void {
   api.on("before_tool_call", async (event, ctx) => {
+    // in-process:无 IPC,直接调 core
     const c = normalize(event.toolName, event.params);
     for (const [name, fn] of Object.entries(checks)) {
       const r = fn({ ...c, sessionId: ctx.sessionKey });
@@ -325,7 +572,6 @@ export function register(api: HookAPI): void {
         };
       }
     }
-    // allow
     return undefined;
   }, {
     matcher: ["exec", "write", "edit", "apply_patch", "web_fetch", "web_search"],
@@ -334,7 +580,7 @@ export function register(api: HookAPI): void {
 }
 ```
 
-### 5.5 OpenClaw Plugin 入口
+### 5.6 OpenClaw Plugin 入口
 
 ```typescript
 // templates/openclaw/plugin/openclaw.plugin.ts
@@ -523,62 +769,88 @@ jobs:
 
 ## 9. 任务大纲(交给 writing-plans)
 
-### Task 1:Core logic 提取(2-3h)
+> **用户决策更新**:core 重写 / Windows / IPC / 单源 SKILL 全部必做,Phase 1 就要全部交付。
 
-- 把 5 hook 的匹配逻辑搬到 TypeScript(`core/*.ts`)
-- 写 unit test(Jest 或 node:test)
-- 与 Claude Code 现有 fixture 跑一遍,确保 100% 一致
+### Task 1:Core logic 提取 + 单测(3-4h)🔴 **Gate**
 
-### Task 2:Claude Code adapter 改写(1-2h)
+- 把 5 hook 的匹配逻辑搬到 TypeScript(`core/check-*.ts`)
+- 写 unit test(node:test,12-15 fixture)
+- **关键 gate**:跑现有 `guard-rails-test.sh`,**46/46 case 必须 PASS**(行为一致性)
+- 不通过 = 整个项目失败,spec 需修订
+- 输出:`core/` 目录 6 文件,单测全绿
 
-- 现有 5 hook 改写为 thin wrapper(调 node core)
-- 跑现有 `guard-rails-test.sh`,46 case 全 PASS
-- 性能:确保 hook 延迟 < 100ms(node 启动可能慢,可考虑持久化进程)
+### Task 2:Claude Code hook 改写 + IPC 客户端(3-4h)🔴 **Gate**
 
-### Task 3:OpenClaw adapter + plugin 入口(3-4h)
+- 现有 5 hook 改写为 thin wrapper(`guard-*.ts`)
+- 每个 wrapper 通过 IPC client 调用常驻 server
+- 跑现有 `guard-rails-test.sh`,46/46 PASS(IPC call 比原 80ms 还快)
+- 输出:5 个 `.ts` 替换原 `.js`/`.sh`/`.py`
 
-- 写 `adapters/openclaw.ts`
-- 写 `plugin/openclaw.plugin.ts` + `package.json`
+### Task 3:IPC server + 跨平台 transport(3-4h)🔴 **Gate**
+
+- 写 `ipc/server.ts`(Unix socket on Linux/Mac,named pipe on Windows)
+- 写 `ipc/client.ts`(跨平台自动选 transport)
+- 写 `ipc/protocol.ts`(JSON 行分隔 schema)
+- 写 `ipc/platform.ts`(路径解析 + 启动检测)
+- `ipc-server-test.sh`:`sleep 0` + 100 个并发 IPC call + 断言
+- 输出:`ipc/` 4 文件,本地手测 < 50ms
+
+### Task 4:cc.sh + cc.ps1 adapter(2-3h)
+
+- `adapters/cc.sh`(Linux/Mac Git-Bash):IPC client 调用 + fallback cold-start
+- `adapters/cc.ps1`(Windows PowerShell 7+):同上
+- 跨平台手测:Linux dev box + Windows VM(或 GitHub Actions Windows runner)
+- 输出:`adapters/cc.{sh,ps1}` 各 ~30 行
+
+### Task 5:OpenClaw adapter + plugin 入口(2-3h)
+
+- 写 `adapters/openclaw.ts`(in-process,无 IPC)
+- 写 `plugin/openclaw.plugin.ts` + `package.json` + `tsconfig.json`
 - 写 5 个 `hooks/<name>/HOOK.md` + `handler.ts` thin wrapper
 - 本地用 ts-node 手动跑一次 5 hook
+- 输出:`plugin/` 3 文件 + `hooks/<name>/` 5 目录
 
-### Task 4:测试矩阵(2-3h)
+### Task 6:跨 runtime 测试矩阵(2-3h)
 
-- 写 `tests/openclaw/run-all.sh`
-- 12-15 fixture 覆盖 5 hook × block/allow
-- 跨 runtime 行为对照测试
+- `tests/openclaw/fixtures/`:12-15 fixture(CC + OpenClaw 两套格式)
+- `tests/openclaw/run-all.sh`(Linux/Mac):跑 cc.sh + oc adapter,断言一致
+- `tests/openclaw/run-all.ps1`(Windows):同上
+- `tests/openclaw/ipc-server-test.sh`:100 并发 call + 启动/重启测试
+- 输出:`tests/openclaw/` 4 文件 + fixtures
 
-### Task 5:CI 集成(1h)
+### Task 7:CI 集成(1-2h)🔴 **Gate**
 
 - 新增 `.github/workflows/openclaw-test.yml`
-- push 触发,Linux-only
+- **Linux + Windows 双矩阵**(用户决策 #2)
+- push 触发,跑 unit + ipc + cross-runtime 测试
 - README 加 CI badge
+- 输出:`openclaw-test.yml` ~40 行
 
-### Task 6:Skill frontmatter 扩展(1h)
+### Task 8:Skill frontmatter 扩展 + install 集成(2-3h)
 
-- 现有 3 skill 的 SKILL.md 加 `metadata.openclaw.*` 段
-- 验证 Claude Code 不受影响(metadata 段被忽略)
+- 现有 3 SKILL.md 加 `metadata.openclaw.events` + `requires.bins` 段(单源)
+- `install.sh --with-openclaw`:复制 plugin + 启动 ipc-server 注册为 daemon
+- `install.ps1 --with-openclaw`:Windows 版(Start-Process 后台)
+- 加 unit test:`tests/install-openclaw-test.sh` dry-run
+- 输出:`install.{sh,ps1}` 各加 30 行
 
-### Task 7:install.sh 集成(1-2h)
+### Task 9:文档 + Final review(2-3h)
 
-- 加 `--with-openclaw` flag
-- 复制 plugin + hooks metadata 到目标 workspace
-- 加 unit test(目标项目 dry-run)
+- 写 `docs/openclaw-compat.md`(~300 行,主文档)
+- 更新 `templates/hooks/README.md` + 顶层 `README.md` 加 OpenClaw 段
+- 加 1 个 example:`examples/openclaw-workspace.md`
+- Final review:spec self-check + cross-runtime 端到端 + Windows 手测
+- 输出:3 文档 + 1 example + Final report
 
-### Task 8:文档 + Final review(2-3h)
+**总工作量**:~20-27 小时(9 task)
 
-- 写 `docs/openclaw-compat.md`
-- 更新 `templates/hooks/README.md` + 顶层 `README.md`
-- 加 1 个 example `examples/openclaw-workspace.md`
-- Final review(spec self-check + cross-runtime 端到端)
-
-**总工作量**:~13-19 小时(8 task)
+**🔴 Gate 任务**(任何不通过 = 项目失败):1、2、3、7
 
 ---
 
 ## 10. 关键决策细节(供 writing-plans 参考)
 
-### 10.1 Core logic 与现有 hook 行为一致性
+### 10.1 Core logic 与现有 hook 行为一致性(用户决策 #1)
 
 **关键风险**:Core logic 用 TypeScript 重写,可能与现有 bash/python hook 行为有微妙差异(字符处理 / 大小写 / Windows 路径)。
 
@@ -587,24 +859,47 @@ jobs:
 2. 不通过的 case 调 spec,直到一致
 3. Task 1 不通过 = 项目失败,需 spec 修订
 
-### 10.2 性能预算
+**Gate 路径**:`Task 1 → 46/46 PASS → Task 2 开工`
+
+### 10.2 性能预算(用户决策 #3:IPC 常驻进程)
 
 | 阶段 | 预算 |
 |---|---|
-| node 启动 | < 200ms(实测,~80-120ms) |
-| core logic 跑 5 check | < 5ms |
-| stdin parse + JSON | < 10ms |
-| 总 hook 延迟 | < 250ms |
+| IPC client connect (Unix socket / named pipe) | < 5ms |
+| IPC request/response round-trip | < 10ms |
+| Server 处理 5 check | < 5ms |
+| Total Claude Code hook latency | **< 50ms** |
+| Cold start(server 未启动时) | < 150ms(可接受,后续 hook 复用) |
+| OpenClaw in-process adapter | **< 5ms**(无 IPC) |
 
-**对比 Claude Code 现有**:`guard-secret-files.js` 是 node,实测 < 80ms。
+**对比现状**:
+- 现状(`guard-secret-files.js` 每次 node 启动):~80-120ms
+- 优化后(IPC server 常驻):< 50ms
+- 优化幅度:**~2-3x**
 
-**风险**:每次 hook 启动 node,Windows 上慢(WSL/路径解析)。**Phase 2 优化**:常驻 node 进程(走 IPC),但 Phase 1 不做。
+### 10.3 Windows 兼容性(用户决策 #2)
 
-### 10.3 Windows 兼容性
+**支持矩阵**(Phase 1 必须全绿):
 
-- OpenClaw Gateway 在 Windows 上有限制(进程模型不同)
-- Phase 1 **只测 Linux**;macOS/Windows 标"unsupported,Phase 2 评估"
-- Claude Code hook 在 Windows 仍工作(现有 bash hook 不变)
+| 维度 | Linux | macOS | Windows |
+|---|---|---|---|
+| OpenClaw Gateway | ✅ node | ✅ node | ✅ node |
+| OpenClaw plugin | ✅ in-process | ✅ in-process | ✅ in-process |
+| Claude Code hook | ✅ cc.sh | ✅ cc.sh(Git Bash)| ✅ cc.ps1(PowerShell 7+) |
+| IPC transport | ✅ Unix socket | ✅ Unix socket | ✅ Named pipe |
+| CI 跑通 | ✅ ubuntu-latest | ✅ macos-latest(可选) | ✅ windows-latest |
+| `guard-rails-test.sh` 跑通 | ✅ | ✅(Git Bash) | ⚠️ 需 power shell 等价(不在本 spec 范围)|
+
+**Windows 特定考虑**:
+- Named pipe 路径: `\\.\pipe\loopx-guard`
+- PowerShell 7+(pwsh)而非 Windows PowerShell 5.1(`powershell`)
+- Node.js `net.createServer().listen('\\\\.\\pipe\\loopx-guard')` — 注意 path 转义
+- `Start-Process node -ArgumentList ...` 后台启动,`Get-Process node` 查询 PID
+- Server 进程崩溃自动重启(install.sh 末尾加 health-check 守护)
+
+**测试要求**:
+- GitHub Actions Windows runner 跑 `pwsh tests/openclaw/run-all.ps1`
+- 本地开发:Windows 10/11 + WSL2 或 PowerShell 7+ 都行
 
 ### 10.4 Permission 语义差异
 
@@ -617,56 +912,101 @@ jobs:
 **决策**:`severity: "critical"` 的 hook(如 main-branch-push)→ 走 `requireApproval`,让用户拍板
 `severity: "warning"` → 直接 block,不问
 
+### 10.5 IPC server 进程管理
+
+**启动时机**:
+- `install.sh --with-openclaw`:启动一次,后台 daemonize,写入 PID file
+- `install.sh --uninstall`:kill PID,清 socket/pipe
+
+**进程隔离**:
+- 每个 workspace 一个 server(`<workspace>/.loopx/guard-server.pid` + socket)
+- 多 workspace 不冲突(各自 PID file + socket 路径)
+
+**生命周期**:
+- install 启动 → hook 调用 → install 卸载 kill
+- crash 检测:`cc.sh` 连不上 server → 自动 spawn sync 重启 → 等 2s → 重试
+
+**资源占用**:
+- 常驻内存:~30MB(node 基础 + core)
+- 0 个 hook 时 CPU 0%(idle on socket)
+- 100 并发 call 测试必须 < 50ms p99
+
+### 10.6 现有 bash hook 兼容性
+
+**问题**:`templates/hooks/guard-*.{js,sh,py}` 现状是 node/bash/python 混用。
+**方案**:全改 `.ts`(thin wrapper + IPC client)。原 `.sh`/`.py` 保留作为 fallback,但主路径走 TS。
+
+**Windows fallback**:`guard-db-migration.sh` / `guard-installer-path.sh` / `guard-package-publish.sh` 是 bash 脚本,在 Windows 上需要 Git Bash 或 WSL。`cc.ps1` 不直接调这些 bash 文件,而是调 `node guard-*.ts`(IPC 路径),所以 Windows 上无需 Git Bash。
+
 ---
 
-## 11. 验收标准
+## 11. 验收标准(v2,反映用户 4 决策)
 
-- [ ] 5 core check 函数 + 单元测试,Jest/node:test 全 PASS
-- [ ] 现有 5 Claude Code hook 改写为 thin wrapper,`guard-rails-test.sh` 46/46 PASS
+### 11.1 必达(用户决策对应)
+
+- [ ] **(用户 #1)** 5 core check 函数 + 单元测试,node:test 全 PASS,**`guard-rails-test.sh` 46/46 PASS**(回归测试)
+- [ ] **(用户 #2)** **GitHub Actions Linux + Windows 双绿**,Windows runner 跑 `run-all.ps1` 通过
+- [ ] **(用户 #3)** IPC 常驻 server 跑通,Claude Code hook 延迟 **< 50ms**(p99 < 100ms),OpenClaw adapter < 5ms(in-process)
+- [ ] **(用户 #4)** 3 SKILL.md frontmatter 单源扩展 `metadata.openclaw.*`,Claude Code 不报错
+
+### 11.2 功能性
+
+- [ ] 现有 5 Claude Code hook 改写为 thin wrapper,行为完全等价
 - [ ] OpenClaw plugin 在 mock 环境(ts-node 跑 adapter)行为一致,12-15 fixture 跨 runtime 全 PASS
 - [ ] 5 HOOK.md + handler.ts 写完,frontmatter 完整
-- [ ] `install.sh --with-openclaw` 跑通,目标 workspace 出现 `.openclaw/plugins/loopx-guard-rails/`
-- [ ] 3 SKILL.md frontmatter 扩展后,Claude Code 不报错(metadata 段忽略)
-- [ ] CI 加 `openclaw-test.yml`,push 触发跑通
-- [ ] `docs/openclaw-compat.md` 写完,内部链接全通
+- [ ] `install.sh --with-openclaw` 跑通,目标 workspace 出现 `.openclaw/plugins/loopx-guard-rails/` + `.loopx/guard-server.pid`
+- [ ] `install.sh --uninstall` kill server,清 socket/pipe,删 plugin 目录
+
+### 11.3 工程性
+
+- [ ] CI 加 `openclaw-test.yml`,push 触发跑通(Linux + Windows)
+- [ ] IPC server 100 并发测试通过,无 memory leak(跑 1000 round 后内存增长 < 10MB)
+- [ ] `docs/openclaw-compat.md` 写完(~300 行),内部链接全通
 - [ ] 顶层 README + `templates/hooks/README.md` 加 OpenClaw 段
 - [ ] 至少 1 个 example:`examples/openclaw-workspace.md`
+- [ ] README 加 CI badge
 
 ---
 
-## 12. 实施阶段元信息
+## 12. 实施阶段元信息(v2)
 
-### 12.1 工作量
+### 12.1 工作量(反映用户决策)
 
-~13-19 小时(8 task):
-- 编码:8-10h
-- 测试:2-3h
-- 文档:2-3h
-- review + 修订:1-3h
+~20-27 小时(9 task):
+- Core 重写 + 单测 + IPC 实现:10-12h(vs v1 估时 +60%)
+- 测试矩阵(跨平台):3-4h
+- 文档 + Final review:3-4h
+- 跨平台调试(Windows 首次跑):2-3h
+- review + 修订:2-4h
 
 ### 12.2 数据依赖
 
 - OpenClaw plugin SDK 文档与版本(已抓 v0.5+)
 - 现有 5 hook 源码(已读完)
-- TypeScript toolchain(node 20+,ts-node,可选 Jest)
+- TypeScript toolchain(node 20+,ts-node,**必需**)
+- PowerShell 7+(Windows 测试用)
+- GitHub Actions Windows runner
 
 ### 12.3 外部依赖
 
 - OpenClaw Gateway 稳定(plugin SDK 0.5.x)
 - Node.js 20+(现有项目已支持)
 - `loopx` CLI 可选(用于 skill 测试)
+- Windows 10/11 测试机 或 CI runner
 
 ### 12.4 风险与回滚
 
 | 风险 | 严重度 | 缓解 |
 |---|---|---|
-| Core logic 重写行为不一致 | **高** | Task 1 gate:46 case 全 PASS 才进 Task 2 |
-| OpenClaw SDK breaking change | 中 | Adapter 层隔离,只换 wrapper |
-| node hook 启动慢 | 中 | 性能预算 < 250ms;超了再优化(常驻进程) |
-| Windows 不支持 | 低 | Phase 1 文档明示"Linux/macOS only",Windows 用户走 Claude Code |
-| 用户装完发现 OpenClaw plugin 没启用 | 中 | install.sh 末尾打印"openclaw plugins reload loopx-guard-rails"提示 |
+| **Core 重写行为漂移** | 🔴 **高** | Task 1 gate:`guard-rails-test.sh` 46/46 PASS 才进 Task 2 |
+| **Windows 平台 bug**(named pipe / PowerShell) | 🔴 **高** | Task 7 gate:CI Windows runner 必须绿;本地 Windows 10/11 手测 |
+| **IPC server 启动失败** | 中 | cc.sh fallback:sync spawn server + 2s 重试 |
+| **OpenClaw SDK breaking change** | 中 | Adapter 层隔离,只换 wrapper |
+| **Server 内存泄漏** | 中 | Task 6 加 1000-round soak test |
+| **用户装完发现 OpenClaw plugin 没启用** | 中 | install.sh 末尾打印"openclaw plugins reload loopx-guard-rails"提示 |
+| **PowerShell 5.1 vs 7+ 差异** | 中 | spec 强制 PowerShell 7+(pwsh),旧版报错提示升级 |
 
-**回滚策略**:本 spec 不实施 → 仓库无 compat 目录,git 历史干净。所有现有 hook 行为不变。
+**回滚策略**:本 spec 不实施 → 仓库无 compat 目录,git 历史干净。所有现有 hook 行为不变(原 `.js`/`.sh`/`.py` 保留,新 `.ts` 是新增不替换)。
 
 ---
 
@@ -746,8 +1086,9 @@ jobs:
 
 | 日期 | 版本 | 变更 |
 |---|---|---|
-| 2026-09-27 | DRAFT | 初版,基于 research/openclaw-hooks.md + cc-vs-openclaw-hooks.md |
+| 2026-09-27 | v1 DRAFT | 初版,基于 research/openclaw-hooks.md + cc-vs-openclaw-hooks.md |
+| 2026-09-27 | v2 DRAFT | 用户 4 决策:core 重写 / Windows / IPC / 单源 SKILL — 架构加 IPC 层,9 task,~20-27h |
 
 ---
 
-*本 spec 由 research + 对比分析产出,8 task,~13-19h 工作量。提交用户审核后,交 writing-plans 出实施计划。*
+*本 spec v2 由用户 4 决策驱动:core 重写必做 + Windows 全支持 + IPC 常驻进程 + 单源 SKILL frontmatter。9 task,~20-27h 工作量,4 个 🔴 gate。提交用户审核后,交 writing-plans 出实施计划。*
