@@ -10,6 +10,9 @@ VERBOSE=""
 # 默认 state path
 HOME_LOOPX="$HOME/.loopx"
 STATE_FILE="$HOME_LOOPX/sync-state.json"
+# Spec §4.2.1: emit doctor_run event at invocation (captures manual trigger).
+mkdir -p "$HOME_LOOPX"
+echo "{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"event\":\"doctor_run\",\"verbose\":\"${VERBOSE:-0}\"}" >> "$HOME_LOOPX/sync-events.jsonl" 2>/dev/null || true
 
 if [ ! -f "$STATE_FILE" ]; then
   echo "## LoopX Sync Doctor"

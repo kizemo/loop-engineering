@@ -103,8 +103,12 @@ run_skill_detect() {
     return
   fi
 
-  local old_cmds=$(grep -oE 'loopx [a-z][a-z-]+' "$old" 2>/dev/null | sort -u)
-  local new_cmds=$(grep -oE 'loopx [a-z][a-z-]+' "$new" 2>/dev/null | sort -u)
+  # Strip CR: grep on Windows Git Bash emits CRLF; sort -u preserves CR per
+  # line, then `grep -qF "$cmd"` (CR-stripped) never matches → spurious
+  # "new command" / "removed command" errors. Same Windows CR trap as
+  # interface_detect.
+  local old_cmds=$(grep -oE 'loopx [a-z][a-z-]+' "$old" 2>/dev/null | tr -d '\r' | sort -u)
+  local new_cmds=$(grep -oE 'loopx [a-z][a-z-]+' "$new" 2>/dev/null | tr -d '\r' | sort -u)
 
   local errors=()
 
@@ -135,10 +139,13 @@ run_hook_detect() {
     return
   fi
 
-  local old_exit=$(grep '^exit_code=' "$old" | cut -d= -f2)
-  local new_exit=$(grep '^exit_code=' "$new" | cut -d= -f2)
-  local old_jsonl_keys=$(grep '^jsonl=' "$old" | sed 's/.*"hook_name"[^,]*,"tool_name"[^,]*,"block_reason"[^,]*,"exit_code".*/full_fields/' || echo "missing")
-  local new_jsonl_keys=$(grep '^jsonl=' "$new" | sed 's/.*"hook_name"[^,]*,"tool_name"[^,]*,"block_reason"[^,]*,"exit_code".*/full_fields/' || echo "missing")
+  # Strip CR: grep on Windows Git Bash emits CRLF; cut keeps the trailing \r
+  # in the value, so [ "$old_exit" != "$new_exit" ] always fires → spurious
+  # "exit_code changed" / "JSONL fields missing" errors. Normalize BEFORE cut.
+  local old_exit=$(grep '^exit_code=' "$old" | tr -d '\r' | cut -d= -f2)
+  local new_exit=$(grep '^exit_code=' "$new" | tr -d '\r' | cut -d= -f2)
+  local old_jsonl_keys=$(grep '^jsonl=' "$old" | tr -d '\r' | sed 's/.*"hook_name"[^,]*,"tool_name"[^,]*,"block_reason"[^,]*,"exit_code".*/full_fields/' || echo "missing")
+  local new_jsonl_keys=$(grep '^jsonl=' "$new" | tr -d '\r' | sed 's/.*"hook_name"[^,]*,"tool_name"[^,]*,"block_reason"[^,]*,"exit_code".*/full_fields/' || echo "missing")
 
   local errors=()
   local warnings=()
@@ -152,8 +159,9 @@ run_hook_detect() {
   fi
 
   # stderr 文案变 = warning
-  local old_stderr=$(grep '^stderr=' "$old" | cut -d= -f2-)
-  local new_stderr=$(grep '^stderr=' "$new" | cut -d= -f2-)
+  # Strip CR same as exit_code/jsonl above (Windows Git Bash CRLF trap).
+  local old_stderr=$(grep '^stderr=' "$old" | tr -d '\r' | cut -d= -f2-)
+  local new_stderr=$(grep '^stderr=' "$new" | tr -d '\r' | cut -d= -f2-)
   if [ "$old_stderr" != "$new_stderr" ]; then
     warnings+=("hook:stderr text changed")
   fi

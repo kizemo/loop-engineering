@@ -27,6 +27,7 @@ Options:
     --target <path>      目标项目根路径(必填)
     --skip-skills        跳过 skill 安装
     --skip-commands      跳过 slash command 安装
+    --with-loopx-sync    启用 LoopX 上游同步(Sub-project D,SessionStart hook)
     -h, --help           显示本帮助
 
 Examples:

@@ -23,7 +23,7 @@
 bash install.sh --with-loopx-sync
 ```
 
-卸载:`bash install.sh --uninstall-with-loopx-sync`(待补)
+卸载:从 `~/.claude/settings.json` 的 `hooks.SessionStart` 数组里移除 loopx-sync.sh 项,重启 Claude Code。
 
 ## 手动命令
 

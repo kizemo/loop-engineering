@@ -38,6 +38,8 @@ fi
 # Step 3: snapshot
 SNAP_PATH=$(bash "$SCRIPT_DIR/loopx-sync-snapshot.sh" make "$STATE_DIR")
 echo "snapshot: $SNAP_PATH"
+# Spec §4.2.1: emit snapshot_created event after snapshot is recorded.
+echo "{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"event\":\"snapshot_created\",\"snapshot_path\":\"$SNAP_PATH\"}" >> "$STATE_DIR/sync-events.jsonl"
 
 # Step 4: update LoopX(失败不阻断,走 fail-soft)
 if loopx update --execute --ref main > /dev/null 2>&1; then
@@ -69,9 +71,17 @@ TOTAL_ERRORS=$(echo "$DETECT_RESULT" | jq '[.interface.errors, .skill.errors, .h
 
 # Step 7: 更新 state
 LOOPX_TO_FIELD="$LOOPX_TO"
+# Spec §5.4: 累积 warnings,达 3 升级为 conflict(无 errors 但 warnings>=3)。
+TOTAL_WARNINGS=$(echo "$DETECT_RESULT" | jq '[.interface.warnings, .skill.warnings, .hook.warnings] | add | length' 2>/dev/null || echo "0")
+EXISTING_WARNINGS=$(jq -r '.warning_accumulator // 0' "$STATE_FILE" 2>/dev/null || echo "0")
+NEW_WARNING_ACCUM=$((EXISTING_WARNINGS + TOTAL_WARNINGS))
+
 if [ "$TOTAL_ERRORS" -gt 0 ]; then
   # 取第一个 lock_reason
   LOCK_REASON=$(echo "$DETECT_RESULT" | jq -r '[.interface.errors[0], .skill.errors[0], .hook.errors[0]] | map(select(. != null))[0] // "unknown"' 2>/dev/null | cut -d: -f1)
+  LAST_STATUS="conflict"
+elif [ "$NEW_WARNING_ACCUM" -ge 3 ]; then
+  LOCK_REASON="warning_threshold_exceeded"
   LAST_STATUS="conflict"
 else
   LOCK_REASON=null
@@ -80,8 +90,8 @@ fi
 
 TMP=$(mktemp)
 if [ -f "$STATE_FILE" ]; then
-  jq --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg ver "$LOOPX_TO_FIELD" --arg reason "$LOCK_REASON" --arg status "$LAST_STATUS" --argjson cnt "$TOTAL_ERRORS" --arg snap "$SNAP_PATH" \
-    '.last_sync_iso=$ts | .last_status=$status | .loopx_version_after=$ver | .lock_reason=$reason | .conflict_count=$cnt | .snapshot_path=$snap' \
+  jq --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg ver "$LOOPX_TO_FIELD" --arg reason "$LOCK_REASON" --arg status "$LAST_STATUS" --argjson cnt "$TOTAL_ERRORS" --arg snap "$SNAP_PATH" --argjson wcnt "$NEW_WARNING_ACCUM" \
+    '.last_sync_iso=$ts | .last_status=$status | .loopx_version_after=$ver | .lock_reason=$reason | .conflict_count=$cnt | .snapshot_path=$snap | .warning_accumulator=$wcnt' \
     "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 fi
 
