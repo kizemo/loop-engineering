@@ -24,7 +24,7 @@
 4. ✅ 单源 SKILL.md + 扩展 frontmatter(`metadata.openclaw.*` 段,CC 端忽略)
 
 ## Tasks
-- Task 1: pending(计划:Core logic 提取 + 单测,**Gate:46/46 PASS**)
+- Task 1: **in_progress**(Core logic 提取 + 单测,**Gate:46/46 PASS**)
 - Task 2: pending(计划:Claude Code hook 改写 + IPC client,**Gate:46/46 PASS via IPC**)
 - Task 3: pending(计划:IPC server + 跨平台 transport,**Gate:< 50ms p99**)
 - Task 4: pending(计划:cc.sh + cc.ps1 adapter)
